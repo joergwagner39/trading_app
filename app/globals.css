@@ -278,14 +278,28 @@ table.scan { width: 100%; border-collapse: collapse; }
 .tile.market span { font-weight: 600; }
 .tile.market em { font-style: normal; font-size: 0.78rem; }
 .tile.market:hover { border-color: var(--accent); }
-.earnings { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.eday { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
+.earn-filters { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.earn-search { padding: 6px 12px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); width: min(260px, 100%); }
+.edays { display: grid; gap: 12px; }
+.eday { background: var(--surface-2); border-radius: 10px; padding: 10px 14px; }
 .eday.today { outline: 2px solid var(--accent); }
-.eday h3 { margin: 0 0 6px; }
-.eday ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.eday li { display: flex; flex-direction: column; }
-.eday li.wl b { color: #d97706; }
-.eday li a span { color: var(--text-2); font-size: 0.88rem; }
+.eday h3 { margin: 0 0 6px; text-transform: none; letter-spacing: 0; font-size: 0.95rem; color: var(--text); }
+.erows { list-style: none; margin: 0; padding: 0; }
+.erows li { display: grid; grid-template-columns: minmax(0, 1fr) 150px 110px 120px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+.erows li:last-child { border-bottom: 0; }
+.erows li.wl .ename b { color: #d97706; }
+.ename { display: flex; flex-direction: column; min-width: 0; }
+.ename b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ename small { color: var(--text-2); font-size: 0.78rem; }
+.etime, .eeps { color: var(--text-2); font-size: 0.8rem; }
+.ecap { text-align: right; font-weight: 600; }
+.eeps { text-align: right; }
+.linkbtn.more { padding: 6px 0 0; font-size: 0.85rem; }
+@media (max-width: 640px) {
+  .erows li { grid-template-columns: minmax(0, 1fr) auto; }
+  .etime { grid-column: 1; grid-row: 2; }
+  .eeps { display: none; }
+}
 .moves { list-style: none; margin: 0; padding: 0; }
 .moves li { display: grid; grid-template-columns: minmax(0, 1fr) auto 80px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .moves li:last-child { border-bottom: 0; }

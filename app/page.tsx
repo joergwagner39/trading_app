@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useState } from "react";
 import { useJson } from "@/lib/useJson";
 import { useWatchlist } from "@/lib/watchlist";
 import type { Briefing, Earning, Move } from "@/lib/briefing";
@@ -17,7 +18,7 @@ export default function BriefingPage() {
   const wl = useWatchlist();
   const q = encodeURIComponent(wl.list.join(","));
   const { data, error, loading } = useJson<Briefing>(`/api/briefing?symbols=${q}`, 5 * 60_000);
-  const earn = useJson<{ items: Earning[]; demo: boolean }>(`/api/earnings?symbols=${q}`);
+  const earn = useJson<{ items: Earning[]; demo: boolean; usOk: boolean }>(`/api/earnings?symbols=${q}`);
 
   return (
     <>
@@ -59,8 +60,11 @@ export default function BriefingPage() {
       <section className="card">
         <div className="card-head">
           <h2>Quartalszahlen</h2>
-          <span className="muted small">gestern bis in 7 Tagen · DAX, Europa, USA + Watchlist</span>
+          <span className="muted small">gestern bis in 7 Tagen · alle US-Unternehmen, DAX & Europa, Watchlist</span>
         </div>
+        {earn.data && !earn.data.usOk && !earn.data.demo && (
+          <p className="muted small">Der US-Kalender (Nasdaq) ist gerade nicht erreichbar – angezeigt werden nur Werte aus den eigenen Listen.</p>
+        )}
         {earn.loading && !earn.data && <p className="muted">Lade Termine… (beim ersten Aufruf bis zu 30 Sek.)</p>}
         {earn.error && <p className="muted">Termine konnten nicht geladen werden.</p>}
         {earn.data && earn.data.items.length === 0 && <p className="muted">Keine Quartalszahlen im Zeitraum gefunden.</p>}
@@ -88,31 +92,86 @@ export default function BriefingPage() {
   );
 }
 
+const CUR: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", GBp: "£", CHF: "CHF", DKK: "DKK" };
+function fmtCap(v: number | null, currency: string) {
+  if (v == null) return "–";
+  const c = CUR[currency] ?? currency;
+  if (v >= 1e12) return `${fmtNum(v / 1e12, 1)} Bio. ${c}`;
+  if (v >= 1e9) return `${fmtNum(v / 1e9, v >= 1e10 ? 0 : 1)} Mrd. ${c}`;
+  return `${fmtNum(v / 1e6, 0)} Mio. ${c}`;
+}
+
+type Region = "Alle" | "Europa" | "USA" | "Watchlist";
+const TOP = 5;
+
 function EarningsList({ items, today }: { items: Earning[]; today: string }) {
-  const days = Array.from(new Set(items.map((i) => i.date)));
+  const [region, setRegion] = useState<Region>("Alle");
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const ql = query.trim().toLowerCase();
+  const filtered = items.filter(
+    (i) =>
+      (region === "Alle" || (region === "Watchlist" ? i.inWatchlist : i.region === region)) &&
+      (!ql || i.name.toLowerCase().includes(ql) || i.symbol.toLowerCase().includes(ql)),
+  );
+  // Heute zuerst, dann die kommenden Tage, gestern zuletzt
+  const days = Array.from(new Set(items.map((i) => i.date))).sort((a, b) => (a < today ? 1 : 0) - (b < today ? 1 : 0) || a.localeCompare(b));
+  const count = (r: Region) => items.filter((i) => r === "Alle" || (r === "Watchlist" ? i.inWatchlist : i.region === r)).length;
+
   return (
-    <div className="earnings">
-      {days.map((d) => (
-        <div key={d} className={`eday ${d === today ? "today" : ""}`}>
-          <h3>{d === today ? "Heute" : d < today ? "Gestern" : shortDate(d)}</h3>
-          <ul>
-            {items.filter((i) => i.date === d).map((i) => (
-              <li key={i.symbol} className={i.inWatchlist ? "wl" : ""}>
-                <Link href={href(i.symbol)}>
-                  <b>{i.symbol}</b> <span>{i.name}</span>
-                </Link>
-                <small className="muted">
-                  {i.inWatchlist && "★ Watchlist · "}
-                  {i.sector !== "Sonstige" ? i.sector : ""}
-                  {i.epsAvg != null ? ` · erw. EPS ${fmtNum(i.epsAvg)}` : ""}
-                  {i.estimate ? " · Termin geschätzt" : ""}
-                </small>
-              </li>
-            ))}
-          </ul>
+    <>
+      <div className="earn-filters">
+        <div className="layers">
+          {(["Alle", "Europa", "USA", "Watchlist"] as Region[]).map((r) => (
+            <button key={r} className={`chip ${region === r ? "on" : ""}`} onClick={() => setRegion(r)}>
+              {r === "Europa" ? "Deutschland & Europa" : r} ({count(r)})
+            </button>
+          ))}
         </div>
-      ))}
-    </div>
+        <input type="search" className="earn-search" placeholder="Unternehmen suchen…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      </div>
+      <div className="edays">
+        {days.map((d) => {
+          const list = filtered.filter((i) => i.date === d);
+          if (!list.length) return null;
+          const expanded = open[d] || !!ql;
+          // Watchlist-Werte immer zeigen, dann die größten nach Börsenwert
+          const top = [...list.filter((i) => i.inWatchlist), ...list.filter((i) => !i.inWatchlist).slice(0, TOP)];
+          const shown = expanded ? list : top;
+          const rest = list.length - top.length;
+          return (
+            <div key={d} className={`eday ${d === today ? "today" : ""}`}>
+              <h3>
+                {d === today ? "Heute · " : d < today ? "Gestern · " : ""}{shortDate(d)} <span className="muted">· {list.length} Unternehmen</span>
+              </h3>
+              <ul className="erows">
+                {shown.map((i) => (
+                  <li key={i.symbol} className={i.inWatchlist ? "wl" : ""}>
+                    <Link href={href(i.symbol)} className="ename">
+                      <b>{i.name}</b>
+                      <small>
+                        {i.symbol}
+                        {i.inWatchlist && " · ★ Watchlist"}
+                        {i.sector !== "Sonstige" ? ` · ${i.sector}` : ""}
+                      </small>
+                    </Link>
+                    <span className="etime">{i.time ?? (i.estimate ? "Termin geschätzt" : "")}</span>
+                    <span className="ecap" title="Börsenwert">{fmtCap(i.marketCap, i.currency)}</span>
+                    <span className="eeps" title="Erwarteter Gewinn je Aktie">{i.epsAvg != null ? `EPS erw. ${fmtNum(i.epsAvg)}` : ""}</span>
+                  </li>
+                ))}
+              </ul>
+              {!ql && rest > 0 && (
+                <button className="linkbtn more" onClick={() => setOpen((o) => ({ ...o, [d]: !o[d] }))}>
+                  {expanded ? "▴ Weniger anzeigen" : `▾ Alle ${list.length} anzeigen (${rest} weitere)`}
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {filtered.length === 0 && <p className="muted">Keine Treffer.</p>}
+      </div>
+    </>
   );
 }
 

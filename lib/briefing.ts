@@ -42,7 +42,19 @@ export type Briefing = {
   at: string;
 };
 
-export type Earning = { symbol: string; name: string; sector: string; date: string; estimate: boolean; epsAvg: number | null; inWatchlist: boolean };
+export type Earning = {
+  symbol: string;
+  name: string;
+  sector: string;
+  date: string;
+  estimate: boolean;
+  epsAvg: number | null; // erwarteter Gewinn je Aktie
+  inWatchlist: boolean;
+  marketCap: number | null;
+  time: "vor Börsenstart" | "nach Börsenschluss" | null;
+  region: "USA" | "Europa";
+  currency: string;
+};
 
 /** Heutiges Datum in Deutschland (YYYY-MM-DD). */
 export const berlinToday = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
@@ -148,16 +160,24 @@ export async function getBriefing(watch: string[]): Promise<Briefing> {
 }
 
 // --- Quartalszahlen ---------------------------------------------------------
-const earnCache = new Map<string, { at: number; v: { date: string; estimate: boolean; epsAvg: number | null } | null }>();
+// USA: vollständiger Kalender von Nasdaq (alle Unternehmen, mit Börsenwert und Uhrzeit).
+// Deutschland/Europa: Termine je Aktie über Yahoo (DAX-, Europa-Listen + Watchlist).
 
-async function nextEarnings(symbol: string) {
+type EarnInfo = { date: string; estimate: boolean; epsAvg: number | null };
+const earnCache = new Map<string, { at: number; v: EarnInfo | null }>();
+
+function demoHash(s: string) {
+  let h = 0;
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h;
+}
+
+async function nextEarnings(symbol: string): Promise<EarnInfo | null> {
   const hit = earnCache.get(symbol);
   if (hit && Date.now() - hit.at < 12 * 3600_000) return hit.v;
-  let v: { date: string; estimate: boolean; epsAvg: number | null } | null = null;
+  let v: EarnInfo | null = null;
   if (DEMO) {
-    // deterministische Demo-Termine in den nächsten 10 Tagen
-    let h = 0;
-    for (const ch of symbol) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const h = demoHash(symbol);
     if (h % 3 === 0) {
       const d = new Date();
       d.setDate(d.getDate() + (h % 10) - 1);
@@ -177,27 +197,133 @@ async function nextEarnings(symbol: string) {
   return v;
 }
 
-/** Quartalszahlen von gestern bis in 7 Tagen für Universum + Watchlist. */
-export async function getEarnings(watch: string[]): Promise<{ items: Earning[]; demo: boolean }> {
-  const today = berlinToday();
-  const from = new Date(today + "T00:00:00Z");
-  from.setUTCDate(from.getUTCDate() - 1);
-  const to = new Date(today + "T00:00:00Z");
-  to.setUTCDate(to.getUTCDate() + 7);
-  const fromS = from.toISOString().slice(0, 10);
-  const toS = to.toISOString().slice(0, 10);
-  const symbols = Array.from(new Set([...watch, ...UNIVERSES.all.symbols]));
-  const res = await mapLimit(symbols, 8, async (s) => {
-    const e = await nextEarnings(s);
-    if (!e || e.date < fromS || e.date > toS) return null;
-    let name = s;
+type UsRow = { symbol: string; name: string; marketCap: number | null; eps: number | null; time: Earning["time"] };
+const usCache = new Map<string, { at: number; v: UsRow[] }>();
+const money = (s: unknown) => {
+  if (typeof s !== "string") return null;
+  const neg = s.includes("(");
+  const n = parseFloat(s.replace(/[^0-9.]/g, ""));
+  return isFinite(n) ? (neg ? -n : n) : null;
+};
+
+/** Alle US-Quartalszahlen eines Tages (Nasdaq-Kalender). */
+async function usEarnings(date: string): Promise<UsRow[]> {
+  const hit = usCache.get(date);
+  if (hit && Date.now() - hit.at < 6 * 3600_000) return hit.v;
+  let v: UsRow[] = [];
+  if (DEMO) {
+    const day = new Date(date + "T12:00:00Z").getUTCDay();
+    if (day !== 0 && day !== 6) {
+      const n = 15 + (demoHash(date) % 40);
+      v = Array.from({ length: n }, (_, i) => {
+        const h = demoHash(date + i);
+        const sym = String.fromCharCode(65 + (h % 26), 65 + ((h >> 5) % 26), 65 + ((h >> 10) % 26));
+        return { symbol: sym, name: `${sym} Demo Corp.`, marketCap: Math.round(10 ** (8 + (h % 400) / 100)), eps: ((h % 300) - 50) / 100, time: (["vor Börsenstart", "nach Börsenschluss", null] as const)[h % 3] };
+      });
+    }
+  } else {
     try {
-      name = (await getHistory(s, 24 * 3600_000)).name;
-    } catch {}
-    return { symbol: s, name, sector: sectorOf(s), date: e.date, estimate: e.estimate, epsAvg: e.epsAvg, inWatchlist: watch.includes(s) };
+      const res = await fetch(`https://api.nasdaq.com/api/calendar/earnings?date=${date}`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+          Accept: "application/json, text/plain, */*",
+          "Accept-Language": "en-US,en;q=0.9",
+          Origin: "https://www.nasdaq.com",
+          Referer: "https://www.nasdaq.com/",
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const j = (await res.json()) as { data?: { rows?: Record<string, unknown>[] | null } };
+      v = (j.data?.rows ?? []).map((r) => ({
+        symbol: String(r.symbol ?? "").replace(".", "-"),
+        name: String(r.name ?? r.symbol ?? ""),
+        marketCap: money(r.marketCap),
+        eps: money(r.epsForecast),
+        time: r.time === "time-pre-market" ? "vor Börsenstart" : r.time === "time-after-hours" ? "nach Börsenschluss" : null,
+      }));
+    } catch {
+      v = [];
+    }
+  }
+  usCache.set(date, { at: Date.now(), v });
+  return v;
+}
+
+const capCache = new Map<string, { at: number; v: number | null }>();
+/** Börsenwerte (für die Sortierung nach Größe) per Yahoo-Sammelabfrage. */
+async function marketCaps(symbols: string[]): Promise<Record<string, number | null>> {
+  const out: Record<string, number | null> = {};
+  const missing = symbols.filter((s) => {
+    const c = capCache.get(s);
+    if (c && Date.now() - c.at < 24 * 3600_000) return (out[s] = c.v), false;
+    return true;
   });
-  const items = res.filter((x): x is Earning => x != null).sort((a, b) => a.date.localeCompare(b.date) || Number(b.inWatchlist) - Number(a.inWatchlist) || a.name.localeCompare(b.name));
-  return { items, demo: DEMO };
+  if (missing.length) {
+    if (DEMO) for (const s of missing) out[s] = Math.round(10 ** (9 + (demoHash(s) % 250) / 100));
+    else {
+      try {
+        const res = await yf.quote(missing, { fields: ["marketCap", "currency"] }, { validateResult: false });
+        const arr = (Array.isArray(res) ? res : [res]) as { symbol: string; marketCap?: number; currency?: string }[];
+        for (const q of arr) {
+          // britische Kurse in Pence → Börsenwert grob in Pfund umrechnen
+          out[q.symbol] = q.marketCap != null ? (q.currency === "GBp" ? q.marketCap / 100 : q.marketCap) : null;
+        }
+      } catch {}
+    }
+    for (const s of missing) capCache.set(s, { at: Date.now(), v: out[s] ?? null });
+  }
+  return out;
+}
+
+/** Quartalszahlen von gestern bis in 7 Tagen: alle US-Unternehmen + Deutschland/Europa + Watchlist. */
+export async function getEarnings(watch: string[]): Promise<{ items: Earning[]; demo: boolean; usOk: boolean }> {
+  const today = berlinToday();
+  const days: string[] = [];
+  for (let k = -1; k <= 7; k++) {
+    const d = new Date(today + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + k);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  const watchSet = new Set(watch);
+
+  // USA: kompletter Kalender
+  const usDays = await mapLimit(days, 3, (d) => usEarnings(d));
+  const items: Earning[] = [];
+  const seen = new Set<string>();
+  usDays.forEach((rows, k) => {
+    for (const r of rows) {
+      if (!r.symbol || seen.has(r.symbol)) continue;
+      seen.add(r.symbol);
+      items.push({
+        symbol: r.symbol, name: r.name, sector: sectorOf(r.symbol), date: days[k], estimate: false, epsAvg: r.eps,
+        inWatchlist: watchSet.has(r.symbol), marketCap: r.marketCap, time: r.time, region: "USA", currency: "USD",
+      });
+    }
+  });
+  const usOk = usDays.some((r) => r.length > 0);
+
+  // Deutschland/Europa (+ Watchlist-Werte, die nicht im US-Kalender stehen)
+  const others = Array.from(new Set([...watch, ...UNIVERSES.de.symbols, ...UNIVERSES.eu.symbols, ...(usOk ? [] : UNIVERSES.us.symbols)])).filter((s) => !seen.has(s));
+  const found = await mapLimit(others, 8, async (s): Promise<Earning | null> => {
+    const e = await nextEarnings(s);
+    if (!e || e.date < days[0] || e.date > days[days.length - 1]) return null;
+    let name = s;
+    let currency = "";
+    try {
+      const h = await getHistory(s, 24 * 3600_000);
+      name = h.name;
+      currency = h.currency;
+    } catch {}
+    const region: Earning["region"] = s.includes(".") ? "Europa" : "USA";
+    return { symbol: s, name, sector: sectorOf(s), date: e.date, estimate: e.estimate, epsAvg: e.epsAvg, inWatchlist: watchSet.has(s), marketCap: null, time: null, region, currency };
+  });
+  const eu = found.filter((x): x is Earning => x != null);
+  const caps = await marketCaps(eu.map((e) => e.symbol));
+  for (const e of eu) e.marketCap = caps[e.symbol] ?? null;
+  items.push(...eu);
+
+  items.sort((a, b) => a.date.localeCompare(b.date) || Number(b.inWatchlist) - Number(a.inWatchlist) || (b.marketCap ?? 0) - (a.marketCap ?? 0));
+  return { items, demo: DEMO, usOk };
 }
 
 // --- News-Feed -----------------------------------------------------------------

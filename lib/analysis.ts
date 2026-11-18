@@ -8,6 +8,7 @@ import {
   rsi,
   sma,
   swingLows,
+  weeklySma,
 } from "./indicators.ts";
 import { detectPatterns, type Patterns } from "./patterns.ts";
 
@@ -25,6 +26,8 @@ export type Metrics = {
   sma50: number | null;
   sma200: number | null;
   distSma200Pct: number | null;
+  sma200w: number | null; // 200-Wochen-Linie
+  distSma200wPct: number | null;
   sma200Rising: boolean | null;
   rsi14: number | null;
   rsiW: number | null; // Wochen-RSI
@@ -107,6 +110,8 @@ export function computeMetrics(candles: Candle[]): Metrics {
     sma50,
     sma200,
     distSma200Pct: pctChange(sma200, price),
+    sma200w: last(weeklySma(candles, 200)),
+    distSma200wPct: pctChange(last(weeklySma(candles, 200)), price),
     sma200Rising: sma200 != null && sma200Prev != null ? sma200 > sma200Prev : null,
     rsi14: last(r),
     rsiW: last(rsi(periodCloses(candles, "W"), 14)),

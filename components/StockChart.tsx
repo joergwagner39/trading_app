@@ -10,7 +10,7 @@ import {
   type IChartApi,
   type Time,
 } from "lightweight-charts";
-import { type Candle, rsi, sma } from "@/lib/indicators";
+import { type Candle, rsi, sma, weeklySma } from "@/lib/indicators";
 import type { Analysis } from "@/lib/analysis";
 import { OverlayPrimitive } from "./chartOverlay";
 import { buildOverlay, DEFAULT_LAYERS, type Layers } from "./overlayBuilder";
@@ -101,6 +101,8 @@ export default function StockChart({ candles, analysis }: { candles: Candle[]; a
       .setData(line(sma(closes, 50)));
     chart.addSeries(LineSeries, { color: css("--sma200"), lineWidth: 2, priceLineVisible: false, lastValueVisible: false, title: "SMA 200" })
       .setData(line(sma(closes, 200)));
+    chart.addSeries(LineSeries, { color: "#ec4899", lineWidth: 2, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, title: "200 W" })
+      .setData(line(weeklySma(candles, 200)));
 
     const vol = chart.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
     vol.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
@@ -146,6 +148,7 @@ export default function StockChart({ candles, analysis }: { candles: Candle[]; a
         <div className="legend">
           <span><i style={{ background: "var(--sma50)" }} />SMA 50</span>
           <span><i style={{ background: "var(--sma200)" }} />SMA 200</span>
+          <span><i style={{ background: "#ec4899" }} />200-Wochen</span>
           <span><i style={{ background: "var(--accent)" }} />RSI 14</span>
         </div>
         <div className="seg" role="tablist" aria-label="Zeitraum">

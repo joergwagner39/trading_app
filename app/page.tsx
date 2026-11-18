@@ -6,12 +6,21 @@ import type { ScanResult } from "@/lib/scan";
 import ScanTable from "@/components/ScanTable";
 import { fmtPct } from "@/lib/format";
 import DemoNote from "@/components/DemoNote";
+import SearchBox from "@/components/SearchBox";
+import { useEffect, useState } from "react";
 
 export default function WatchlistPage() {
   const wl = useWatchlist();
+  const [toast, setToast] = useState("");
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
   const url = wl.list.length ? `/api/scan?symbols=${encodeURIComponent(wl.list.join(","))}` : null;
   const { data, error, loading } = useJson<ScanResult>(url, 60_000);
   const rows = (data?.rows ?? []).filter((r) => wl.list.includes(r.symbol));
+  const pending = wl.list.filter((s) => !rows.some((r) => r.symbol === s) && !(data?.failed ?? []).includes(s));
 
   const oversold = rows.filter((r) => r.metrics.rsi14 != null && r.metrics.rsi14 < 30);
   const near200 = rows.filter((r) => r.metrics.distSma200Pct != null && Math.abs(r.metrics.distSma200Pct) <= 3);
@@ -27,6 +36,16 @@ export default function WatchlistPage() {
         </div>
         <ImportExport />
       </div>
+
+      <div className="add-row">
+        <SearchBox
+          mode="add"
+          placeholder="➕ Aktie hinzufügen – Name oder Symbol eingeben (z. B. Rheinmetall, Apple)…"
+          onAdded={(h) => setToast(`${h.name || h.symbol} (${h.symbol}) zur Watchlist hinzugefügt`)}
+        />
+        {toast && <span className="toast" role="status">✓ {toast}</span>}
+      </div>
+      {pending.length > 0 && <p className="muted small">Lade Daten für: {pending.join(", ")}…</p>}
 
       {data?.demo && <DemoNote />}
 
@@ -65,7 +84,7 @@ export default function WatchlistPage() {
       {wl.list.length === 0 ? (
         <div className="empty-state">
           <p>Deine Watchlist ist leer.</p>
-          <p className="muted">Suche oben nach einer Aktie oder füge Werte im <Link href="/screener">Screener</Link> mit ☆ hinzu.</p>
+          <p className="muted">Gib oben im Feld „Aktie hinzufügen“ einen Namen ein oder füge Werte im <Link href="/screener">Screener</Link> mit ☆ hinzu.</p>
         </div>
       ) : (
         data && (
@@ -73,6 +92,7 @@ export default function WatchlistPage() {
             rows={rows}
             cols={["price", "change", "signal", "trend", "rsi", "dist200", "perf3m", "perf12m"]}
             initialSort={{ col: "signal", dir: -1 }}
+            removable
           />
         )
       )}

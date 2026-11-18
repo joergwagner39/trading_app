@@ -1,11 +1,13 @@
 import "server-only";
 import { analyze, type Metrics, type Signal } from "./analysis";
 import { getHistory, mapLimit } from "./data";
+import { sectorOf } from "./universe";
 
 export type ScanRow = {
   symbol: string;
   name: string;
   currency: string;
+  sector: string;
   signal: Signal;
   score: number;
   metrics: Metrics;
@@ -22,7 +24,7 @@ export async function scan(symbols: string[], maxAgeMs = 15 * 60_000): Promise<S
       demo ||= h.demo;
       if (h.candles.length < 60) throw new Error("zu wenig Historie");
       const a = analyze(h.candles);
-      return { symbol: h.symbol, name: h.name, currency: h.currency, signal: a.signal, score: a.score, metrics: a.metrics };
+      return { symbol: h.symbol, name: h.name, currency: h.currency, sector: sectorOf(h.symbol), signal: a.signal, score: a.score, metrics: a.metrics };
     } catch {
       failed.push(symbol);
       return null;

@@ -50,8 +50,8 @@ export function normalizeSymbol(s: string) {
   return decodeURIComponent(s).trim().toUpperCase();
 }
 
-// Immer 3 Jahre laden: genug für SMA 200 + 12-Monats-Performance, ein Cache für alle Ansichten.
-const YEARS = 3;
+// Immer dieselbe Historie laden (ein Cache für alle Ansichten).
+const YEARS = 5; // 5 Jahre: genug für die 200-Wochen-Linie
 
 /** maxAgeMs: wie alt gecachte Daten höchstens sein dürfen (Einzelwerte 1 Min., Screener 15 Min.). */
 export async function getHistory(symbol: string, maxAgeMs = 60_000): Promise<History> {

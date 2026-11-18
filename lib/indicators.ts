@@ -173,3 +173,33 @@ export function pctChange(from: number | null | undefined, to: number | null | u
   if (from == null || to == null || from === 0) return null;
   return ((to - from) / from) * 100;
 }
+
+/** Wochenschlüssel (Montag der Woche) eines Tagesdatums YYYY-MM-DD. */
+export function weekKey(day: string): string {
+  const d = new Date(day + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Gleitender Durchschnitt auf Wochenbasis (z. B. 200-Wochen-Linie), auf die
+ * Tageskerzen abgebildet. Die laufende Woche nutzt den jeweils letzten Kurs.
+ */
+export function weeklySma(candles: Candle[], period: number): Series {
+  const out: Series = new Array(candles.length).fill(null);
+  const weekly: number[] = [];
+  let key = "";
+  let sum = 0;
+  for (let i = 0; i < candles.length; i++) {
+    const k = weekKey(candles[i].time);
+    if (k !== key) {
+      // abgeschlossene Woche fest in die Summe übernehmen
+      if (weekly.length) sum += weekly[weekly.length - 1];
+      if (weekly.length >= period) sum -= weekly[weekly.length - period];
+      weekly.push(candles[i].close);
+      key = k;
+    } else weekly[weekly.length - 1] = candles[i].close;
+    if (weekly.length >= period) out[i] = (sum + weekly[weekly.length - 1]) / period;
+  }
+  return out;
+}

@@ -123,6 +123,7 @@ export default function StockPage({ params }: { params: Promise<{ symbol: string
         <dl className="kpis">
           <Kpi label="SMA 50" value={fmtNum(m.sma50)} />
           <Kpi label="SMA 200" value={fmtNum(m.sma200)} sub={fmtPct(m.distSma200Pct)} />
+          <Kpi label="200-Wochen-Linie" value={fmtNum(m.sma200w)} sub={m.sma200w == null ? "zu wenig Historie" : fmtPct(m.distSma200wPct)} />
           <Kpi label="RSI Tag · Woche · Monat" value={`${fmtNum(m.rsi14, 0)} · ${fmtNum(m.rsiW, 0)} · ${fmtNum(m.rsiM, 0)}`} sub={m.rsi14 == null ? "" : m.rsi14 < 30 ? "Tag überverkauft" : m.rsi14 > 70 ? "Tag überkauft" : ""} />
           <Kpi label="Trendstärke" value={`${m.trendScore}/100`} />
           <Kpi label="52W-Hoch" value={fmtNum(m.high52w)} sub={fmtPct(m.distHigh52wPct)} />

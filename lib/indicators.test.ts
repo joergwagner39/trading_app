@@ -44,3 +44,30 @@ test("adx high in clean trend, low in chop", () => {
   });
   assert.ok(adx(chop)[99]! < 20);
 });
+
+test("weeklySma entspricht SMA der Wochenschlusskurse", async () => {
+  const { weeklySma, weekKey } = await import("./indicators.ts");
+  const candles: Candle[] = [];
+  const d = new Date("2020-01-01T00:00:00Z");
+  for (let i = 0; i < 600; i++) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue;
+    const c = 100 + Math.sin(i / 7) * 10 + i * 0.05;
+    candles.push({ time: d.toISOString().slice(0, 10), open: c, high: c + 1, low: c - 1, close: c, volume: 1 });
+  }
+  const P = 20;
+  const w = weeklySma(candles, P);
+  for (const idx of [150, 300, candles.length - 1]) {
+    // Referenz: Wochenschlusskurse bis einschließlich Kerze idx
+    const closes: number[] = [];
+    let key = "";
+    for (let i = 0; i <= idx; i++) {
+      const k = weekKey(candles[i].time);
+      if (k !== key) (closes.push(candles[i].close), (key = k));
+      else closes[closes.length - 1] = candles[i].close;
+    }
+    const ref = closes.slice(-P).reduce((a, b) => a + b, 0) / P;
+    near(w[idx], ref, 1e-9);
+  }
+  assert.equal(w[10], null);
+});

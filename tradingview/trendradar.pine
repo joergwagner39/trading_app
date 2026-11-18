@@ -10,7 +10,7 @@ showTable = input.bool(true, "Analyse-Tabelle anzeigen", group = "Anzeige")
 showBuy   = input.bool(true, "Aufstock-Signale markieren", group = "Anzeige")
 histBars  = input.int(250, "Muster/Signale nur der letzten X Kerzen zeigen", minval = 50, maxval = 5000, group = "Anzeige", tooltip = "Ältere Zeichnungen werden ausgeblendet, damit der Chart übersichtlich bleibt.")
 recent = bar_index >= last_bar_index - histBars
-maxDist   = input.float(20.0, "Zonen/Ziele nur bis max. ± % vom Kurs zeichnen", minval = 3, maxval = 200, step = 1, group = "Anzeige", tooltip = "Weit entfernte Zonen würden die Preisachse strecken und die Kerzen zusammenquetschen.")
+maxDist   = input.float(30.0, "Zonen/Ziele nur bis max. ± % vom Kurs zeichnen", minval = 3, maxval = 200, step = 1, group = "Anzeige", tooltip = "Weit entfernte Zonen würden die Preisachse strecken und die Kerzen zusammenquetschen.")
 near(float p) => not na(p) and math.abs(p / close - 1) * 100 <= maxDist
 rsiTh     = input.int(30, "RSI-Schwelle (überverkauft)", minval = 5, maxval = 50, group = "Alarme")
 band200   = input.float(3.0, "Abstand zur 200-Tage-Linie (± %)", minval = 0.5, maxval = 15, step = 0.5, group = "Alarme")
@@ -19,6 +19,8 @@ band200   = input.float(3.0, "Abstand zur 200-Tage-Linie (± %)", minval = 0.5, 
 s50  = ta.sma(close, 50)
 s200 = ta.sma(close, 200)
 rsiV = ta.rsi(close, 14)
+rsiW = request.security(syminfo.tickerid, "W", ta.rsi(close, 14))
+rsiMo = request.security(syminfo.tickerid, "M", ta.rsi(close, 14))
 [macdL, sigL, hist] = ta.macd(close, 12, 26, 9)
 [diPlus, diMinus, adxV] = ta.dmi(14, 14)
 atrV = ta.atr(14)
@@ -228,6 +230,8 @@ if newPoint and array.size(zzP) >= 5
         array.push(hLines, line.new(cB, c, dB, d, color = col, width = 2, force_overlay = true))
         array.push(hLines, line.new(xB, x, bB, b, color = col, style = line.style_dashed, force_overlay = true))
         array.push(hLines, line.new(bB, b, dB, d, color = col, style = line.style_dashed, force_overlay = true))
+        linefill.new(array.get(hLines, 0), array.get(hLines, 4), color.new(col, 80))
+        linefill.new(array.get(hLines, 2), array.get(hLines, 5), color.new(col, 80))
         t1 = d + 0.382 * (a - d)
         t2 = d + 0.618 * (a - d)
         stopH = math.abs(a - d) / lenXA < 1 ? x : d - math.sign(a - d) * 0.13 * lenXA
@@ -313,6 +317,7 @@ if newPoint and showChartP and array.size(zzP) >= 3
     if not lastHigh and math.abs(p3 - p1) <= dTol * p1 and p2 - math.max(p1, p3) >= 2 * atrV
         line.new(b1, p1, b3, p3, color = green, width = 2, force_overlay = true)
         line.new(b1, p2, bar_index + 10, p2, color = color.new(#22c55e, 40), style = line.style_dashed, force_overlay = true)
+        box.new(b1, p2, b3, math.min(p1, p3), border_color = color.new(#22c55e, 60), bgcolor = color.new(#22c55e, 85), force_overlay = true)
         label.new(b3, p3, "Doppelboden", style = label.style_label_up, color = color.new(#22c55e, 20), textcolor = color.white, size = size.small, force_overlay = true)
         dbNeck := p2
         dbBar := bar_index
@@ -324,6 +329,7 @@ if newPoint and showChartP and array.size(zzP) >= 3
     if lastHigh and math.abs(p3 - p1) <= dTol * p1 and math.min(p1, p3) - p2 >= 2 * atrV
         line.new(b1, p1, b3, p3, color = red, width = 2, force_overlay = true)
         line.new(b1, p2, bar_index + 10, p2, color = color.new(#f05252, 40), style = line.style_dashed, force_overlay = true)
+        box.new(b1, math.max(p1, p3), b3, p2, border_color = color.new(#f05252, 60), bgcolor = color.new(#f05252, 85), force_overlay = true)
         label.new(b3, p3, "Doppeltop", style = label.style_label_down, color = color.new(#f05252, 20), textcolor = color.white, size = size.small, force_overlay = true)
         dtNeck := p2
         dtBar := bar_index
@@ -350,6 +356,7 @@ if newPoint and showChartP and array.size(zzP) >= 3
             line.new(hB, hd, nB2, n2, color = col, width = 2, force_overlay = true)
             line.new(nB2, n2, sB2, s2, color = col, width = 2, force_overlay = true)
             line.new(nB1, n1, nB2, n2, color = color.new(col, 40), style = line.style_dashed, extend = extend.right, force_overlay = true)
+            box.new(sB1, isTop ? hd : math.max(n1, n2), sB2, isTop ? math.min(n1, n2) : hd, border_color = color.new(col, 60), bgcolor = color.new(col, 87), force_overlay = true)
             label.new(hB, hd, isTop ? "Kopf (SKS)" : "Kopf (inverse SKS)", style = isTop ? label.style_label_down : label.style_label_up, color = color.new(col, 20), textcolor = color.white, size = size.small, force_overlay = true)
             hsP1 := n1
             hsB1 := nB1
@@ -441,11 +448,11 @@ if barstate.islast
             // Extensions: über das Hoch (Aufwärtsswing) bzw. unter das Tief hinaus
             p = r > 1 ? (fibUp ? fLo + r * (fHi - fLo) : fHi - r * (fHi - fLo)) : fibLevel(r)
             fc = r == 0.618 or r == 0.5 ? color.new(#a78bfa, 0) : r > 1 ? color.new(#38bdf8, 20) : color.new(#a78bfa, 45)
-            if not near(p)
+            if r > 1 and math.abs(p / close - 1) * 100 > 2 * maxDist
                 continue
-            array.push(fibLines, line.new(startB, p, bar_index + 20, p, color = fc, style = r == 0.0 or r == 1.0 ? line.style_solid : line.style_dotted, force_overlay = true))
+            array.push(fibLines, line.new(startB, p, bar_index + 20, p, color = fc, style = r == 0.0 or r == 1.0 or r == 0.618 or r == 0.5 ? line.style_solid : line.style_dashed, width = r == 0.618 or r == 0.5 ? 2 : 1, force_overlay = true))
             array.push(fibLabels, label.new(bar_index + 20, p, (r > 1 ? "Ziel " : "Fib ") + str.tostring(r * 100, "#.#") + " %  " + str.tostring(p, format.mintick), style = label.style_label_left, color = color.new(color.black, 100), textcolor = fc, size = size.small, force_overlay = true))
-        if near(gpTop)
+        if true
             gpBox := box.new(startB, gpTop, bar_index + 20, gpBot, border_color = color.new(#a78bfa, 60), bgcolor = color.new(#a78bfa, 85), text = "Golden Pocket", text_color = color.new(#a78bfa, 0), text_size = size.small, text_halign = text.align_left, force_overlay = true)
 
 // Nächstes Fibonacci-Level zum aktuellen Kurs (für die Tabelle)
@@ -555,6 +562,7 @@ if newPoint and showTri and array.size(zzP) >= 4
             tc = bias > 0 ? green : bias < 0 ? red : color.new(#eab308, 0)
             triU := line.new(start, upStart, bar_index, upNow, color = tc, width = 2, force_overlay = true)
             triL := line.new(start, loStart, bar_index, loNow, color = tc, width = 2, force_overlay = true)
+            linefill.new(triU, triL, color.new(tc, 85))
             triLbl := label.new(start, upStart, nm, style = label.style_label_down, color = color.new(tc, 20), textcolor = color.white, size = size.small, force_overlay = true)
             triActive := true
             triName := nm
@@ -643,7 +651,7 @@ if srNew or barstate.islast
                 cCnt += 1
                 cFirst := math.min(cFirst, pb)
             else
-                if not na(cLo) and cCnt >= srMin
+                if not na(cLo)
                     array.push(zLo, cLo - w * 0.25)
                     array.push(zHi, cHi + w * 0.25)
                     array.push(zCnt, cCnt)
@@ -652,32 +660,74 @@ if srNew or barstate.islast
                 cHi := p
                 cCnt := 1
                 cFirst := pb
-        if not na(cLo) and cCnt >= srMin
+        if not na(cLo)
             array.push(zLo, cLo - w * 0.25)
             array.push(zHi, cHi + w * 0.25)
             array.push(zCnt, cCnt)
             array.push(zFirst, cFirst)
 
-// Nächste Unterstützung (unter dem Kurs) und nächster Widerstand (darüber)
+// Nächste Unterstützung (unter dem Kurs) und nächster Widerstand (darüber).
+// Bevorzugt Zonen mit mind. srMin Berührungen, sonst die nächstgelegene überhaupt.
 float supLo = na
 float supHi = na
 int   supCnt = 0
+int   supFirst = na
 float resLo = na
 float resHi = na
 int   resCnt = 0
+int   resFirst = na
+float aSupLo = na
+float aSupHi = na
+int   aSupCnt = 0
+int   aSupFirst = na
+float aResLo = na
+float aResHi = na
+int   aResCnt = 0
+int   aResFirst = na
 if array.size(zLo) > 0
     for i = 0 to array.size(zLo) - 1
         lo = array.get(zLo, i)
         hi = array.get(zHi, i)
-        mid = (lo + hi) / 2
-        if mid <= close and (na(supHi) or hi > supHi)
-            supLo := lo
-            supHi := hi
-            supCnt := array.get(zCnt, i)
-        if mid > close and (na(resLo) or lo < resLo)
-            resLo := lo
-            resHi := hi
-            resCnt := array.get(zCnt, i)
+        cnt = array.get(zCnt, i)
+        fb = array.get(zFirst, i)
+        if (lo + hi) / 2 <= close
+            if cnt >= srMin and (na(supHi) or hi > supHi)
+                supLo := lo
+                supHi := hi
+                supCnt := cnt
+                supFirst := fb
+            if na(aSupHi) or hi > aSupHi
+                aSupLo := lo
+                aSupHi := hi
+                aSupCnt := cnt
+                aSupFirst := fb
+        else
+            if cnt >= srMin and (na(resLo) or lo < resLo)
+                resLo := lo
+                resHi := hi
+                resCnt := cnt
+                resFirst := fb
+            if na(aResLo) or lo < aResLo
+                aResLo := lo
+                aResHi := hi
+                aResCnt := cnt
+                aResFirst := fb
+if na(supLo) or (not na(aSupHi) and supHi < close * (1 - maxDist / 100) and aSupHi > supHi)
+    supLo := aSupLo
+    supHi := aSupHi
+    supCnt := aSupCnt
+    supFirst := aSupFirst
+if na(resLo) or (not na(aResLo) and resLo > close * (1 + maxDist / 100) and aResLo < resLo)
+    resLo := aResLo
+    resHi := aResHi
+    resCnt := aResCnt
+    resFirst := aResFirst
+// Kein Widerstand darüber (Nähe Hoch) → 52-Wochen-Hoch als Widerstand
+if na(resLo) and hi52 > close * 1.005
+    resLo := hi52 - atrV * 0.15
+    resHi := hi52 + atrV * 0.15
+    resCnt := 1
+    resFirst := bar_index - 30
 
 supTouch = not na(supHi) and low <= supHi and close >= supLo
 supTouchNew = supTouch and not supTouch[1]
@@ -689,26 +739,32 @@ if barstate.islast
     for bx in srBoxes
         box.delete(bx)
     array.clear(srBoxes)
-    if showSR and array.size(zLo) > 0
-        ord = array.sort_indices(zHi, order.descending)
-        int shown = 0
-        for k = 0 to array.size(ord) - 1
-            i = array.get(ord, k)
-            lo = array.get(zLo, i)
-            hi = array.get(zHi, i)
-            if (lo + hi) / 2 <= close and shown < srShowN and near((lo + hi) / 2)
-                tr = shown == 0 ? 70 : 85
-                array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, tr), text = (shown == 0 ? "Nächste Unterstützung · " : "Unterstützung · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = green, text_size = size.small, text_halign = text.align_right, force_overlay = true))
-                shown += 1
-        shown := 0
-        for k = array.size(ord) - 1 to 0
-            i = array.get(ord, k)
-            lo = array.get(zLo, i)
-            hi = array.get(zHi, i)
-            if (lo + hi) / 2 > close and shown < srShowN and near((lo + hi) / 2)
-                tr = shown == 0 ? 70 : 85
-                array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#f05252, 50), bgcolor = color.new(#f05252, tr), text = (shown == 0 ? "Nächster Widerstand · " : "Widerstand · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = red, text_size = size.small, text_halign = text.align_right, force_overlay = true))
-                shown += 1
+    if showSR
+        if not na(supLo)
+            array.push(srBoxes, box.new(math.max(supFirst, bar_index - 150), supHi, bar_index + 30, supLo, border_color = color.new(#22c55e, 20), border_width = 2, bgcolor = color.new(#22c55e, 72), text = "Nächste Unterstützung " + str.tostring((supLo + supHi) / 2, format.mintick) + " · " + str.tostring(supCnt) + "×", text_color = green, text_size = size.normal, text_halign = text.align_right, force_overlay = true))
+        if not na(resLo)
+            array.push(srBoxes, box.new(math.max(resFirst, bar_index - 150), resHi, bar_index + 30, resLo, border_color = color.new(#f05252, 20), border_width = 2, bgcolor = color.new(#f05252, 72), text = "Nächster Widerstand " + str.tostring((resLo + resHi) / 2, format.mintick) + " · " + str.tostring(resCnt) + "×", text_color = red, text_size = size.normal, text_halign = text.align_right, force_overlay = true))
+        // weitere starke Zonen in Kursnähe
+        if array.size(zLo) > 0 and srShowN > 1
+            ord = array.sort_indices(zHi, order.descending)
+            int shownS = 1
+            int shownR = 1
+            for k = 0 to array.size(ord) - 1
+                i = array.get(ord, k)
+                lo = array.get(zLo, i)
+                hi = array.get(zHi, i)
+                cnt = array.get(zCnt, i)
+                mid = (lo + hi) / 2
+                if cnt < srMin or not near(mid) or lo == supLo or lo == resLo
+                    continue
+                isSup = mid <= close
+                if (isSup and shownS < srShowN) or (not isSup and shownR < srShowN)
+                    zc = isSup ? #22c55e : #f05252
+                    array.push(srBoxes, box.new(math.max(array.get(zFirst, i), bar_index - 150), hi, bar_index + 30, lo, border_color = color.new(zc, 55), bgcolor = color.new(zc, 87), text = (isSup ? "Unterstützung " : "Widerstand ") + str.tostring(mid, format.mintick) + " · " + str.tostring(cnt) + "×", text_color = isSup ? green : red, text_size = size.small, text_halign = text.align_right, force_overlay = true))
+                    if isSup
+                        shownS += 1
+                    else
+                        shownR += 1
 
 // ─── Zielzonen: Widerstände + Fib-Extensions + Musterziele, Überlappungen = Konfluenz
 var tgtBoxes = array.new_box()
@@ -769,7 +825,7 @@ if barstate.islast
                 i = array.get(ord, k)
                 lo = array.get(cLo, i)
                 hi = array.get(cHi, i)
-                if lo <= close * 1.002 or not near(lo)
+                if lo <= close * 1.002 or lo > close * (1 + 2 * maxDist / 100)
                     continue
                 m = array.size(mLo)
                 if m > 0 and lo <= array.get(mHi, m - 1)
@@ -816,7 +872,7 @@ if barstate.islast
         if z200ok and near(s200)
             bx200 := box.new(left, s200 * 1.02, right, s200 * 0.97, border_color = color.new(#60a5fa, 50), bgcolor = color.new(#60a5fa, 85), text = "Kaufzone: Test der 200-Tage-Linie", text_color = color.new(#60a5fa, 0), text_size = size.small, text_halign = text.align_right, force_overlay = true)
 
-var table tbl = table.new(position.top_right, 2, 17, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1, force_overlay = true)
+var table tbl = table.new(position.top_right, 2, 16, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1, force_overlay = true)
 fmt(v, f) => na(v) ? "–" : str.tostring(v, f)
 sgn(v, f) => na(v) ? "–" : (v > 0 ? "+" : "") + str.tostring(v, f)
 row(r, k, v, c) =>
@@ -827,19 +883,18 @@ if barstate.islast and showTable
     row(1, "Score", sgn(score, "#") + " / 100", signalCol)
     row(2, "Empfehlung", actionText, actionCol)
     row(3, "", actionHint, color.new(#8f99a8, 0))
-    row(4, "RSI 14", fmt(rsiV, "#") + (rsiNow < 30 ? " überverkauft" : rsiNow > 70 ? " überkauft" : ""), rsiNow < 30 ? color.new(#22c55e, 0) : rsiNow > 70 ? color.new(#f05252, 0) : white)
-    row(5, "ADX 14", fmt(adxV, "#") + (not na(adxV) and adxV >= 25 ? " starker Trend" : not na(adxV) and adxV < 20 ? " kein Trend" : ""), white)
-    row(6, "Trendstärke", str.tostring(trend, "#") + " / 100", white)
-    row(7, "Abst. SMA 200", sgn(dist200, "#.#") + " %", not na(dist200) and dist200 >= 0 ? color.new(#22c55e, 0) : color.new(#f05252, 0))
-    row(8, "Perf. 3 M / 12 M", sgn(perf3m, "#") + " % / " + sgn(perf12m, "#") + " %", white)
-    row(9, "Stop-Loss", fmt(stopLoss, "#.##"), color.new(#f05252, 0))
-    row(10, "Muster", not na(patBar) and bar_index - patBar <= 40 ? patText : "–", not na(patBar) and bar_index - patBar <= 40 ? patCol : white)
-    row(11, "PRZ", przName != "" ? przName + " " + str.tostring(przLo, format.mintick) + " – " + str.tostring(przHi, format.mintick) : "–", przBull ? green : red)
-    row(12, "Nächstes Fib", showFib ? nearestFib() + (fibUp ? " ↑-Swing" : " ↓-Swing") : "–", color.new(#a78bfa, 0))
-    row(13, "Formation", triActive ? triName + " (aktiv)" : "–", triBias > 0 ? green : triBias < 0 ? red : color.new(#eab308, 0))
-    row(14, "Nächste Unterstützung", zoneTxt(supLo, supHi, supCnt), green)
-    row(15, "Nächster Widerstand", zoneTxt(resLo, resHi, resCnt), red)
-    row(16, "Zielzonen", tgtText, color.new(#38bdf8, 0))
+    row(4, "RSI Tag · Woche · Monat", "T " + fmt(rsiV, "#") + " · W " + fmt(rsiW, "#") + " · M " + fmt(rsiMo, "#"), rsiNow < 30 ? color.new(#22c55e, 0) : rsiNow > 70 ? color.new(#f05252, 0) : white)
+    row(5, "Trendstärke", str.tostring(trend, "#") + " / 100", white)
+    row(6, "Abst. SMA 200", sgn(dist200, "#.#") + " %", not na(dist200) and dist200 >= 0 ? color.new(#22c55e, 0) : color.new(#f05252, 0))
+    row(7, "Perf. 3 M / 12 M", sgn(perf3m, "#") + " % / " + sgn(perf12m, "#") + " %", white)
+    row(8, "Stop-Loss", fmt(stopLoss, "#.##"), color.new(#f05252, 0))
+    row(9, "Muster", not na(patBar) and bar_index - patBar <= 40 ? patText : "–", not na(patBar) and bar_index - patBar <= 40 ? patCol : white)
+    row(10, "PRZ", przName != "" ? przName + " " + str.tostring(przLo, format.mintick) + " – " + str.tostring(przHi, format.mintick) : "–", przBull ? green : red)
+    row(11, "Nächstes Fib", showFib ? nearestFib() + (fibUp ? " ↑-Swing" : " ↓-Swing") : "–", color.new(#a78bfa, 0))
+    row(12, "Formation", triActive ? triName + " (aktiv)" : "–", triBias > 0 ? green : triBias < 0 ? red : color.new(#eab308, 0))
+    row(13, "Nächste Unterstützung", zoneTxt(supLo, supHi, supCnt), green)
+    row(14, "Nächster Widerstand", zoneTxt(resLo, resHi, resCnt), red)
+    row(15, "Zielzonen", tgtText, color.new(#38bdf8, 0))
 
 // ─── Alarme (in TradingView: Alarm erstellen → Bedingung „Trendradar“) ────────
 near200 = not na(dist200) and math.abs(dist200) <= band200

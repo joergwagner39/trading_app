@@ -1,5 +1,5 @@
 "use client";
-import { use } from "react";
+import { use, useState } from "react";
 import dynamic from "next/dynamic";
 import { useJson } from "@/lib/useJson";
 import type { Analysis } from "@/lib/analysis";
@@ -9,6 +9,7 @@ import SignalBadge from "@/components/SignalBadge";
 import WatchButton from "@/components/WatchButton";
 import DemoNote from "@/components/DemoNote";
 
+const TradingViewChart = dynamic(() => import("@/components/TradingViewChart"), { ssr: false, loading: () => <div className="tv-chart skeleton" /> });
 const StockChart = dynamic(() => import("@/components/StockChart"), { ssr: false, loading: () => <div className="chart skeleton" /> });
 
 type Detail = History & { analysis: Analysis };
@@ -22,7 +23,8 @@ const ACTION_LABEL: Record<Analysis["action"], string> = {
 
 export default function StockPage({ params }: { params: Promise<{ symbol: string }> }) {
   const symbol = decodeURIComponent(use(params).symbol).toUpperCase();
-  const { data, error, loading } = useJson<Detail>(`/api/history/${encodeURIComponent(symbol)}`);
+  const { data, error, loading } = useJson<Detail>(`/api/history/${encodeURIComponent(symbol)}`, 60_000);
+  const [view, setView] = useState<"analyse" | "tv">("analyse");
   const news = useJson<NewsItem[]>(`/api/news/${encodeURIComponent(symbol)}`);
 
   if (error) return <p className="error">{error}</p>;
@@ -48,7 +50,11 @@ export default function StockPage({ params }: { params: Promise<{ symbol: string
       </div>
 
       <section className="card">
-        <StockChart candles={data.candles} />
+        <div className="seg view-switch" role="tablist" aria-label="Chart">
+          <button role="tab" aria-selected={view === "analyse"} className={view === "analyse" ? "on" : ""} onClick={() => setView("analyse")}>Analyse-Chart</button>
+          <button role="tab" aria-selected={view === "tv"} className={view === "tv" ? "on" : ""} onClick={() => setView("tv")}>TradingView live</button>
+        </div>
+        {view === "analyse" ? <StockChart candles={data.candles} /> : <TradingViewChart symbol={data.symbol} />}
       </section>
 
       <div className="grid2">

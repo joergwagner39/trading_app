@@ -31,10 +31,14 @@ export type SearchHit = { symbol: string; name: string; exchange: string; type: 
 
 // --- einfacher In-Memory-Cache ------------------------------------------------
 const cache = new Map<string, { at: number; value: unknown }>();
+const inflight = new Map<string, Promise<unknown>>();
 async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
-  const value = await fn();
+  if (inflight.has(key)) return inflight.get(key) as Promise<T>;
+  const p = fn().finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  const value = await p;
   cache.set(key, { at: Date.now(), value });
   if (cache.size > 2000) cache.delete(cache.keys().next().value!);
   return value;
@@ -49,9 +53,10 @@ export function normalizeSymbol(s: string) {
 // Immer 3 Jahre laden: genug für SMA 200 + 12-Monats-Performance, ein Cache für alle Ansichten.
 const YEARS = 3;
 
-export async function getHistory(symbol: string): Promise<History> {
+/** maxAgeMs: wie alt gecachte Daten höchstens sein dürfen (Einzelwerte 1 Min., Screener 15 Min.). */
+export async function getHistory(symbol: string, maxAgeMs = 60_000): Promise<History> {
   symbol = normalizeSymbol(symbol);
-  return cached(`h:${symbol}`, 15 * 60_000, async () => {
+  return cached(`h:${symbol}`, maxAgeMs, async () => {
     if (DEMO) return demoHistory(symbol, YEARS);
     const period1 = new Date();
     period1.setFullYear(period1.getFullYear() - YEARS);

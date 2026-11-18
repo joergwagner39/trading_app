@@ -13,12 +13,12 @@ export type ScanRow = {
 
 export type ScanResult = { rows: ScanRow[]; failed: string[]; demo: boolean; at: string };
 
-export async function scan(symbols: string[]): Promise<ScanResult> {
+export async function scan(symbols: string[], maxAgeMs = 15 * 60_000): Promise<ScanResult> {
   const failed: string[] = [];
   let demo = false;
   const rows = await mapLimit(symbols, 8, async (symbol): Promise<ScanRow | null> => {
     try {
-      const h = await getHistory(symbol);
+      const h = await getHistory(symbol, maxAgeMs);
       demo ||= h.demo;
       if (h.candles.length < 60) throw new Error("zu wenig Historie");
       const a = analyze(h.candles);

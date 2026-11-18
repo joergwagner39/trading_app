@@ -1,7 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 
-export function useJson<T>(url: string | null) {
+export function useJson<T>(url: string | null, refreshMs?: number) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!url || !refreshMs) return;
+    const id = setInterval(() => document.visibilityState === "visible" && setTick((t) => t + 1), refreshMs);
+    return () => clearInterval(id);
+  }, [url, refreshMs]);
   const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: !!url });
   useEffect(() => {
     if (!url) {
@@ -9,7 +15,7 @@ export function useJson<T>(url: string | null) {
       return;
     }
     const ctrl = new AbortController();
-    setState((s) => ({ data: s.data, loading: true }));
+    setState((s) => ({ data: s.data, loading: !s.data || tick === 0 }));
     fetch(url, { signal: ctrl.signal })
       .then(async (r) => {
         const j = await r.json();
@@ -20,6 +26,6 @@ export function useJson<T>(url: string | null) {
         if (e.name !== "AbortError") setState({ error: e.message, loading: false });
       });
     return () => ctrl.abort();
-  }, [url]);
+  }, [url, tick]);
   return state;
 }

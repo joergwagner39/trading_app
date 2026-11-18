@@ -186,6 +186,8 @@ table.scan { width: 100%; border-collapse: collapse; }
 .seg button { background: none; border: 0; padding: 4px 11px; border-radius: 7px; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-2); }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
 .chart { height: 520px; width: 100%; }
+.view-switch { margin-bottom: 14px; }
+.tv-chart { height: 600px; width: 100%; }
 .skeleton { background: var(--surface-2); border-radius: 8px; }
 
 .scorebar { position: relative; height: 34px; margin: 4px 0 14px; }
@@ -234,6 +236,7 @@ table.scan { width: 100%; border-collapse: collapse; }
   h1 { font-size: 1.35rem; }
   .stock-head h1 { font-size: 1.4rem; }
   .chart { height: 400px; }
+  .tv-chart { height: 480px; }
   .zones li { flex-direction: column; gap: 4px; }
   .zones .num { text-align: left; display: flex; gap: 8px; align-items: baseline; }
   .hide-sm { display: none; }

@@ -13,6 +13,10 @@ export async function GET(req: NextRequest) {
   if (universe && universe in UNIVERSES) symbols = UNIVERSES[universe].symbols;
   else if (p.get("symbols")) symbols = p.get("symbols")!.split(",").map(normalizeSymbol).filter(Boolean).slice(0, 100);
   if (!symbols.length) return NextResponse.json({ error: "universe oder symbols angeben" }, { status: 400 });
-  const result = await scan(symbols);
-  return NextResponse.json(result, { headers: { "Cache-Control": "s-maxage=900, stale-while-revalidate=3600" } });
+  // Universen: 15 Min. Cache. Watchlist (symbols=…): minütlich aktuell.
+  const fresh = !universe;
+  const result = await scan(symbols, fresh ? 60_000 : 15 * 60_000);
+  return NextResponse.json(result, {
+    headers: { "Cache-Control": fresh ? "s-maxage=60" : "s-maxage=900, stale-while-revalidate=3600" },
+  });
 }

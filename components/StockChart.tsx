@@ -29,6 +29,9 @@ export default function StockChart({ candles }: { candles: Candle[] }) {
   const chartRef = useRef<IChartApi | null>(null);
   const [range, setRange] = useState<(typeof RANGES)[number]["id"]>("1J");
   const [theme, setTheme] = useState(0);
+  const lastC = candles[candles.length - 1];
+  // Nur neu zeichnen, wenn sich die Daten wirklich ändern (nicht bei jedem Refresh)
+  const sig = `${candles.length}|${lastC?.time}|${lastC?.close}|${lastC?.high}|${lastC?.low}`;
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -81,7 +84,8 @@ export default function StockChart({ candles }: { candles: Candle[] }) {
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, theme]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig, theme]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -92,7 +96,8 @@ export default function StockChart({ candles }: { candles: Candle[] }) {
     const from = new Date(to);
     from.setMonth(from.getMonth() - r.months);
     chart.timeScale().setVisibleRange({ from: from.toISOString().slice(0, 10) as Time, to: candles[candles.length - 1].time as Time });
-  }, [range, candles, theme]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, sig, theme]);
 
   return (
     <div className="chart-wrap">

@@ -10,6 +10,7 @@ und lässt sich auf Desktop (Chrome/Edge: „App installieren“) und Smartphone
   Automatische Einschätzung **bullisch / neutral / bärisch** (Score −100 … +100) mit Begründung.
 - **Wann aufstocken?** – Empfehlung (Aufstocken / Halten / Abwarten / Nicht aufstocken),
   Kaufzonen (Rücksetzer an SMA 50, letztes Swing-Tief, 200-Tage-Linie) und Stop-Loss-Vorschlag.
+- **TradingView live** – auf der Aktienseite umschaltbar: eingebetteter TradingView-Chart mit Live-Kursen und allen Zeichenwerkzeugen.
 - **News** zum jeweiligen Unternehmen.
 - **Screener**
   - Trendstärkste Aktien (Trend-Score 0–100)
@@ -22,7 +23,11 @@ und lässt sich auf Desktop (Chrome/Edge: „App installieren“) und Smartphone
 
 Kurse und News kommen über [`yahoo-finance2`](https://github.com/gadicc/yahoo-finance2)
 von Yahoo Finance (kein API-Key nötig, inoffizielle Schnittstelle, Kurse ggf. verzögert).
-Abruf und Berechnung laufen serverseitig (`app/api/*`), Ergebnisse werden 15 Min. gecacht.
+Abruf und Berechnung laufen serverseitig (`app/api/*`). Aktienseite und Watchlist aktualisieren sich jede Minute,
+der Screener nutzt einen 15-Minuten-Cache.
+
+TradingView bietet keine Daten-Schnittstelle; das eingebettete Widget zeigt Live-Kurse nur an.
+Analyse und Screener basieren daher auf den Yahoo-Daten.
 
 ## Lokal starten
 

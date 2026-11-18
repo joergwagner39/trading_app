@@ -10,7 +10,7 @@ import DemoNote from "@/components/DemoNote";
 export default function WatchlistPage() {
   const wl = useWatchlist();
   const url = wl.list.length ? `/api/scan?symbols=${encodeURIComponent(wl.list.join(","))}` : null;
-  const { data, error, loading } = useJson<ScanResult>(url);
+  const { data, error, loading } = useJson<ScanResult>(url, 60_000);
   const rows = (data?.rows ?? []).filter((r) => wl.list.includes(r.symbol));
 
   const oversold = rows.filter((r) => r.metrics.rsi14 != null && r.metrics.rsi14 < 30);

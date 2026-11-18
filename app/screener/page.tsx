@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { useJson } from "@/lib/useJson";
 import type { ScanResult } from "@/lib/scan";
-import { SECTORS, UNIVERSES, type UniverseId } from "@/lib/universe";
+import Link from "next/link";
+import { ETF_FOR_SECTOR, SECTOR_ETFS, SECTOR_ORDER, SECTORS, UNIVERSES, type Sector, type UniverseId } from "@/lib/universe";
 import ScanTable from "@/components/ScanTable";
 import DemoNote from "@/components/DemoNote";
 import { useWatchlist } from "@/lib/watchlist";
@@ -49,8 +50,11 @@ export default function ScreenerPage() {
   const { data, error, loading } = useJson<ScanResult>(url);
   const loaded = data?.rows ?? [];
   // Sektoren, die in der aktuellen Auswahl vorkommen (in fester Reihenfolge)
-  const sectors = [...SECTORS, "Sonstige"].filter((s) => loaded.some((r) => r.sector === s));
-  const all = sector ? loaded.filter((r) => r.sector === sector) : loaded;
+  const sectors = SECTOR_ORDER.filter((s) => loaded.some((r) => r.sector === s));
+  // gewählter Sektor gilt nur, wenn er im aktuellen Markt vorkommt
+  const activeSector = !loaded.length || sectors.includes(sector) ? sector : "";
+  const all = activeSector ? loaded.filter((r) => r.sector === activeSector) : loaded;
+  const sectorEtf = activeSector in ETF_FOR_SECTOR ? ETF_FOR_SECTOR[activeSector as Sector] : null;
 
   let rows = all;
   if (tab === "trend") rows = all.filter((r) => !onlyUp || (r.metrics.distSma200Pct ?? -1) > 0);
@@ -89,7 +93,7 @@ export default function ScreenerPage() {
         </label>
         <label>
           Sektor
-          <select value={sector} onChange={(e) => setSector(e.target.value)}>
+          <select value={activeSector} onChange={(e) => setSector(e.target.value)}>
             <option value="">Alle Sektoren</option>
             {(sectors.length ? sectors : [...SECTORS]).map((s) => (
               <option key={s} value={s}>
@@ -125,13 +129,25 @@ export default function ScreenerPage() {
         )}
       </div>
 
+      {sectorEtf && (
+        <p className="etf-hint">
+          Sektor-ETF für „{activeSector}“:{" "}
+          <Link href={`/stock/${sectorEtf}`}>
+            <b>{sectorEtf}</b> – {SECTOR_ETFS[sectorEtf]}
+          </Link>{" "}
+          · zeigt, wie stark der ganze Sektor gerade läuft
+        </p>
+      )}
+      {source === "etf" && (
+        <p className="muted small">Sektor-Rotation: Die Trendstärke zeigt, welche Sektoren gerade führen und welche schwächeln.</p>
+      )}
       {data?.demo && <DemoNote />}
       {error && <p className="error">Fehler: {error}</p>}
       {loading && <p className="muted loading">Analysiere {source === "watchlist" ? wl.list.length : UNIVERSES[source].symbols.length} Aktien… (kann beim ersten Mal 10–30 Sek. dauern)</p>}
 
       {data && !loading && (
         <>
-          <p className="muted small">{rows.length} von {all.length} Aktien · Stand {new Date(data.at).toLocaleString("de-DE")}</p>
+          <p className="muted small">{rows.length} von {all.length} {source === "etf" ? "ETFs" : "Aktien"} · Stand {new Date(data.at).toLocaleString("de-DE")}</p>
           {tab === "trend" && (
             <ScanTable rows={rows} cols={["sector", "price", "trend", "signal", "perf3m", "perf6m", "perf12m", "high52"]} initialSort={{ col: "trend", dir: -1 }} />
           )}

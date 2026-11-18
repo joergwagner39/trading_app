@@ -69,20 +69,62 @@ const EU: Record<string, Sector> = {
   "STMPA.PA": "Halbleiter", "IBE.MC": "Versorger", "BP.L": "Energie (Öl & Gas)", "AIR.PA": "Rüstung & Luftfahrt",
 };
 
-export type UniverseId = "de" | "us" | "eu" | "all";
+// US-Sektor-ETFs (Select Sector SPDRs + Halbleiter/Rüstung) mit deutscher Sektorbezeichnung
+export const SECTOR_ETFS: Record<string, string> = {
+  XLK: "Technologie",
+  XLC: "Kommunikation & Medien",
+  XLY: "Zyklischer Konsum",
+  XLP: "Basiskonsum",
+  XLF: "Finanzen",
+  XLV: "Gesundheit",
+  XLI: "Industrie (ETF)",
+  XLE: "Energie",
+  XLB: "Grundstoffe",
+  XLU: "Versorger (ETF)",
+  XLRE: "Immobilien (ETF)",
+  SMH: "Halbleiter (ETF)",
+  ITA: "Rüstung & Luftfahrt (ETF)",
+};
 
-const SECTOR_OF: Record<string, Sector> = { ...DE, ...US, ...EU };
+/** Passender Sektor-ETF zu jedem Aktien-Sektor. */
+export const ETF_FOR_SECTOR: Record<Sector, string> = {
+  "Halbleiter": "SMH",
+  "Software & IT": "XLK",
+  "Internet & Plattformen": "XLC",
+  "Hardware & Netzwerk": "XLK",
+  "Rüstung & Luftfahrt": "ITA",
+  "Industrie": "XLI",
+  "Automobil": "XLY",
+  "Banken & Finanzen": "XLF",
+  "Versicherungen": "XLF",
+  "Gesundheit & Pharma": "XLV",
+  "Konsum & Handel": "XLP",
+  "Energie (Öl & Gas)": "XLE",
+  "Versorger": "XLU",
+  "Chemie & Rohstoffe": "XLB",
+  "Telekommunikation": "XLC",
+  "Immobilien": "XLRE",
+  "Medien & Unterhaltung": "XLC",
+};
+
+export type UniverseId = "de" | "us" | "eu" | "all" | "etf";
+
+const SECTOR_OF: Record<string, string> = { ...DE, ...US, ...EU, ...SECTOR_ETFS };
 
 export const UNIVERSES: Record<UniverseId, { name: string; symbols: string[] }> = {
-  all: { name: "Alle Märkte", symbols: Object.keys(SECTOR_OF).filter((s) => s !== "AIR.PA") },
+  all: { name: "Alle Märkte (Aktien)", symbols: Object.keys({ ...DE, ...US, ...EU }).filter((s) => s !== "AIR.PA") },
   de: { name: "Deutschland (DAX-Werte)", symbols: Object.keys(DE) },
   us: { name: "USA (Large Caps)", symbols: Object.keys(US) },
   eu: { name: "Europa (Large Caps)", symbols: Object.keys(EU).filter((s) => s !== "AIR.PA") },
+  etf: { name: "Sektor-ETFs (USA: XLK, XLF, XLRE …)", symbols: Object.keys(SECTOR_ETFS) },
 };
 
-export const ALL_SYMBOLS = UNIVERSES.all.symbols;
+export const ALL_SYMBOLS = [...UNIVERSES.all.symbols, ...UNIVERSES.etf.symbols];
 
-/** Sektor eines Symbols; unbekannte (z. B. eigene Watchlist-Werte) → "Sonstige". */
-export function sectorOf(symbol: string): Sector | "Sonstige" {
+/** Sektor eines Symbols (bei ETFs der abgebildete Sektor); unbekannte (z. B. eigene Watchlist-Werte) → "Sonstige". */
+export function sectorOf(symbol: string): string {
   return SECTOR_OF[symbol] ?? "Sonstige";
 }
+
+/** Reihenfolge der Sektoren für Auswahllisten. */
+export const SECTOR_ORDER: string[] = [...SECTORS, ...Object.values(SECTOR_ETFS), "Sonstige"];

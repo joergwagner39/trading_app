@@ -1,7 +1,7 @@
 // Trendradar – Chartanalyse wie in der Trendradar-App, als TradingView-Indikator.
 // Gedacht für den Tageschart (1D). Keine Anlageberatung.
 //@version=6
-indicator("Trendradar", shorttitle = "Trendradar", overlay = true, max_boxes_count = 100, max_labels_count = 300, max_lines_count = 500)
+indicator("Trendradar", shorttitle = "Trendradar", overlay = true, scale = scale.right, max_boxes_count = 100, max_labels_count = 300, max_lines_count = 500)
 
 // ─── Einstellungen ────────────────────────────────────────────────────────────
 showSma   = input.bool(true, "SMA 50 / 200 anzeigen", group = "Anzeige")
@@ -10,6 +10,8 @@ showTable = input.bool(true, "Analyse-Tabelle anzeigen", group = "Anzeige")
 showBuy   = input.bool(true, "Aufstock-Signale markieren", group = "Anzeige")
 histBars  = input.int(250, "Muster/Signale nur der letzten X Kerzen zeigen", minval = 50, maxval = 5000, group = "Anzeige", tooltip = "Ältere Zeichnungen werden ausgeblendet, damit der Chart übersichtlich bleibt.")
 recent = bar_index >= last_bar_index - histBars
+maxDist   = input.float(20.0, "Zonen/Ziele nur bis max. ± % vom Kurs zeichnen", minval = 3, maxval = 200, step = 1, group = "Anzeige", tooltip = "Weit entfernte Zonen würden die Preisachse strecken und die Kerzen zusammenquetschen.")
+near(float p) => not na(p) and math.abs(p / close - 1) * 100 <= maxDist
 rsiTh     = input.int(30, "RSI-Schwelle (überverkauft)", minval = 5, maxval = 50, group = "Alarme")
 band200   = input.float(3.0, "Abstand zur 200-Tage-Linie (± %)", minval = 0.5, maxval = 15, step = 0.5, group = "Alarme")
 
@@ -281,7 +283,7 @@ if newPoint and array.size(zzP) >= 4
                     przName := array.get(hNames, i)
                     przBull := bullP
                     break
-        if przName != ""
+        if przName != "" and near((przLo + przHi) / 2)
             pc = bullP ? green : red
             przBox := box.new(cB, przHi, bar_index + 30, przLo, border_color = color.new(pc, 30), border_style = line.style_dashed, bgcolor = color.new(pc, 88), text = "Entstehendes " + przName + (bullP ? " ▲" : " ▼") + " – PRZ", text_color = pc, text_size = size.small, text_halign = text.align_right, text_valign = text.align_bottom, force_overlay = true)
 
@@ -439,9 +441,12 @@ if barstate.islast
             // Extensions: über das Hoch (Aufwärtsswing) bzw. unter das Tief hinaus
             p = r > 1 ? (fibUp ? fLo + r * (fHi - fLo) : fHi - r * (fHi - fLo)) : fibLevel(r)
             fc = r == 0.618 or r == 0.5 ? color.new(#a78bfa, 0) : r > 1 ? color.new(#38bdf8, 20) : color.new(#a78bfa, 45)
+            if not near(p)
+                continue
             array.push(fibLines, line.new(startB, p, bar_index + 20, p, color = fc, style = r == 0.0 or r == 1.0 ? line.style_solid : line.style_dotted, force_overlay = true))
             array.push(fibLabels, label.new(bar_index + 20, p, (r > 1 ? "Ziel " : "Fib ") + str.tostring(r * 100, "#.#") + " %  " + str.tostring(p, format.mintick), style = label.style_label_left, color = color.new(color.black, 100), textcolor = fc, size = size.small, force_overlay = true))
-        gpBox := box.new(startB, gpTop, bar_index + 20, gpBot, border_color = color.new(#a78bfa, 60), bgcolor = color.new(#a78bfa, 85), text = "Golden Pocket", text_color = color.new(#a78bfa, 0), text_size = size.small, text_halign = text.align_left, force_overlay = true)
+        if near(gpTop)
+            gpBox := box.new(startB, gpTop, bar_index + 20, gpBot, border_color = color.new(#a78bfa, 60), bgcolor = color.new(#a78bfa, 85), text = "Golden Pocket", text_color = color.new(#a78bfa, 0), text_size = size.small, text_halign = text.align_left, force_overlay = true)
 
 // Nächstes Fibonacci-Level zum aktuellen Kurs (für die Tabelle)
 nearestFib() =>
@@ -691,7 +696,7 @@ if barstate.islast
             i = array.get(ord, k)
             lo = array.get(zLo, i)
             hi = array.get(zHi, i)
-            if (lo + hi) / 2 <= close and shown < srShowN
+            if (lo + hi) / 2 <= close and shown < srShowN and near((lo + hi) / 2)
                 tr = shown == 0 ? 70 : 85
                 array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, tr), text = (shown == 0 ? "Nächste Unterstützung · " : "Unterstützung · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = green, text_size = size.small, text_halign = text.align_right, force_overlay = true))
                 shown += 1
@@ -700,7 +705,7 @@ if barstate.islast
             i = array.get(ord, k)
             lo = array.get(zLo, i)
             hi = array.get(zHi, i)
-            if (lo + hi) / 2 > close and shown < srShowN
+            if (lo + hi) / 2 > close and shown < srShowN and near((lo + hi) / 2)
                 tr = shown == 0 ? 70 : 85
                 array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#f05252, 50), bgcolor = color.new(#f05252, tr), text = (shown == 0 ? "Nächster Widerstand · " : "Widerstand · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = red, text_size = size.small, text_halign = text.align_right, force_overlay = true))
                 shown += 1
@@ -764,7 +769,7 @@ if barstate.islast
                 i = array.get(ord, k)
                 lo = array.get(cLo, i)
                 hi = array.get(cHi, i)
-                if lo <= close * 1.002
+                if lo <= close * 1.002 or not near(lo)
                     continue
                 m = array.size(mLo)
                 if m > 0 and lo <= array.get(mHi, m - 1)
@@ -804,11 +809,11 @@ if barstate.islast
     if showZones
         left = bar_index - 40
         right = bar_index + 15
-        if z50ok
+        if z50ok and near(s50)
             bx50 := box.new(left, s50 * 1.01, right, s50 * 0.98, border_color = color.new(#fbbf24, 50), bgcolor = color.new(#fbbf24, 85), text = "Kaufzone: Rücksetzer an SMA 50", text_color = color.new(#fbbf24, 0), text_size = size.small, text_halign = text.align_right, force_overlay = true)
-        if zSupOk
+        if zSupOk and near(support)
             bxSup := box.new(left, support * 1.01, right, support * 0.99, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, 85), text = "Kaufzone: letztes Swing-Tief", text_color = color.new(#22c55e, 0), text_size = size.small, text_halign = text.align_right, force_overlay = true)
-        if z200ok
+        if z200ok and near(s200)
             bx200 := box.new(left, s200 * 1.02, right, s200 * 0.97, border_color = color.new(#60a5fa, 50), bgcolor = color.new(#60a5fa, 85), text = "Kaufzone: Test der 200-Tage-Linie", text_color = color.new(#60a5fa, 0), text_size = size.small, text_halign = text.align_right, force_overlay = true)
 
 var table tbl = table.new(position.top_right, 2, 17, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1, force_overlay = true)

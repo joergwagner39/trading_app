@@ -64,8 +64,15 @@ Keine Anlageberatung. Alle Signale werden automatisch aus technischen Indikatore
 
 `tradingview/trendradar.pine` enthält dieselbe Analyse als TradingView-Indikator
 (Signal & Score, Empfehlung, Kaufzonen, Stop-Loss, Trendstärke) – live in deinen TradingView-Charts.
+Zusätzlich:
+
+- **Harmonische Muster**: Gartley, Bat, Alt-Bat, Butterfly, Crab, Deep Crab, Cypher – mit Zielen und Stop,
+  plus Vorschau der Umkehrzone (PRZ) für entstehende Muster
+- **Chartformationen**: Doppelboden/-top, Schulter-Kopf-Schulter (auch invers) mit Nackenlinien-Ausbruch
+- **Kerzenmuster**: Engulfing, Hammer, Shooting Star (nur an relevanten Stellen)
+- **Fibonacci**: Retracements des letzten großen Swings, Golden Pocket, Extensions 127,2/161,8 %
 
 1. In TradingView einen Chart öffnen (Zeitraum **1D**), unten **Pine-Editor** öffnen.
 2. Inhalt der Datei einfügen → **Zum Chart hinzufügen**, danach **Speichern**.
 3. Alarme: **Alarm erstellen** → Bedingung „Trendradar“ → z. B. „RSI unter Schwelle“,
-   „An der 200-Tage-Linie“ oder „Aufstock-Signal“. Funktioniert auch auf einer ganzen Watchlist (je nach TradingView-Plan).
+   „An der 200-Tage-Linie“, „Aufstock-Signal“, „Harmonisches Muster bullisch“, „Kurs erreicht PRZ“ oder „Golden Pocket erreicht“. Funktioniert auch auf einer ganzen Watchlist (je nach TradingView-Plan).

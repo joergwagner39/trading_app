@@ -1,7 +1,7 @@
 // Trendradar – Chartanalyse wie in der Trendradar-App, als TradingView-Indikator.
 // Gedacht für den Tageschart (1D). Keine Anlageberatung.
 //@version=6
-indicator("Trendradar", shorttitle = "Trendradar", overlay = true, max_boxes_count = 10, max_labels_count = 100)
+indicator("Trendradar", shorttitle = "Trendradar", overlay = true, max_boxes_count = 100, max_labels_count = 300, max_lines_count = 500)
 
 // ─── Einstellungen ────────────────────────────────────────────────────────────
 showSma   = input.bool(true, "SMA 50 / 200 anzeigen", group = "Anzeige")
@@ -96,6 +96,345 @@ actionHint = action == 1 ? (rsiNow <= 35 ? "Überverkauft im Aufwärtstrend" : "
 stopRef = not na(support) ? support : not na(s50) ? s50 : close
 stopLoss = math.min(stopRef - atrV, close - 2 * atrV)
 
+// ─── Muster-Einstellungen ─────────────────────────────────────────────────────
+grpP = "Muster"
+showHarm   = input.bool(true, "Harmonische Muster (Gartley, Bat, Butterfly, Crab, Cypher …)", group = grpP)
+showPrz    = input.bool(true, "Entstehende harmonische Muster: Umkehrzone (PRZ) vorab zeigen", group = grpP)
+showChartP = input.bool(true, "Doppelboden/-top, Schulter-Kopf-Schulter", group = grpP)
+showCandle = input.bool(true, "Kerzenmuster (Engulfing, Hammer, Shooting Star)", group = grpP)
+zzLen      = input.int(5, "Pivot-Länge (Zickzack)", minval = 2, maxval = 30, group = grpP, tooltip = "Größer = nur größere Schwünge. Muster werden erst so viele Kerzen nach dem Wendepunkt bestätigt.")
+tol        = input.float(5.0, "Toleranz Fibonacci-Verhältnisse (%)", minval = 1, maxval = 15, step = 0.5, group = grpP) / 100
+dTol       = input.float(2.0, "Toleranz Doppelboden/-top & Schultern (%)", minval = 0.5, maxval = 8, step = 0.5, group = grpP) / 100
+
+grpF = "Fibonacci"
+showFib  = input.bool(true, "Fibonacci-Retracements des letzten großen Swings", group = grpF)
+fibLen   = input.int(120, "Swing-Suche (Kerzen zurück)", minval = 20, maxval = 500, group = grpF)
+showExt  = input.bool(true, "Extensions 127,2 % / 161,8 % (Kursziele)", group = grpF)
+
+green = color.new(#22c55e, 0)
+red   = color.new(#f05252, 0)
+white = color.new(#e8ebf0, 0)
+
+// ─── Zickzack aus bestätigten Wendepunkten ───────────────────────────────────
+var zzP = array.new_float()
+var zzB = array.new_int()
+var zzH = array.new_bool()
+
+addPoint(float p, int b, bool isHigh) =>
+    bool changed = false
+    n = array.size(zzP)
+    if n > 0 and array.get(zzH, n - 1) == isHigh
+        lastP = array.get(zzP, n - 1)
+        if (isHigh and p > lastP) or (not isHigh and p < lastP)
+            array.set(zzP, n - 1, p)
+            array.set(zzB, n - 1, b)
+            changed := true
+    else
+        array.push(zzP, p)
+        array.push(zzB, b)
+        array.push(zzH, isHigh)
+        changed := true
+        if array.size(zzP) > 12
+            array.shift(zzP)
+            array.shift(zzB)
+            array.shift(zzH)
+    changed
+
+zh = ta.pivothigh(high, zzLen, zzLen)
+zl = ta.pivotlow(low, zzLen, zzLen)
+bool newPoint = false
+if not na(zh)
+    newPoint := addPoint(zh, bar_index - zzLen, true) or newPoint
+if not na(zl)
+    newPoint := addPoint(zl, bar_index - zzLen, false) or newPoint
+
+// ─── Harmonische Muster ───────────────────────────────────────────────────────
+// Verhältnisse nach Carney: AB/XA, BC/AB, CD/BC, AD/XA (= D-Retracement von XA)
+var hNames = array.from("Gartley", "Bat", "Alt-Bat", "Butterfly", "Crab", "Deep Crab")
+var hAbLo  = array.from(0.618, 0.382, 0.236, 0.786, 0.382, 0.886)
+var hAbHi  = array.from(0.618, 0.500, 0.382, 0.786, 0.618, 0.886)
+var hCdLo  = array.from(1.130, 1.618, 2.000, 1.618, 2.240, 2.000)
+var hCdHi  = array.from(1.618, 2.618, 3.618, 2.240, 3.618, 3.618)
+var hXdLo  = array.from(0.786, 0.886, 1.130, 1.270, 1.618, 1.618)
+var hXdHi  = array.from(0.786, 0.886, 1.130, 1.618, 1.618, 1.618)
+
+inR(float v, float lo, float hi) => v >= lo * (1 - tol) and v <= hi * (1 + tol)
+
+var string patText = ""
+var color  patCol  = color.gray
+var int    patBar  = na
+bool harmBullNew = false
+bool harmBearNew = false
+
+var hLines = array.new_line()
+var label hLbl = na
+var int hXBar = na
+
+if newPoint and array.size(zzP) >= 5
+    n = array.size(zzP)
+    x = array.get(zzP, n - 5)
+    a = array.get(zzP, n - 4)
+    b = array.get(zzP, n - 3)
+    c = array.get(zzP, n - 2)
+    d = array.get(zzP, n - 1)
+    xB = array.get(zzB, n - 5)
+    aB = array.get(zzB, n - 4)
+    bB = array.get(zzB, n - 3)
+    cB = array.get(zzB, n - 2)
+    dB = array.get(zzB, n - 1)
+    bull = not array.get(zzH, n - 1)
+    // D wurde verschoben → alte Zeichnung desselben Musters entfernen
+    if not na(hXBar) and hXBar == xB
+        for l in hLines
+            line.delete(l)
+        array.clear(hLines)
+        label.delete(hLbl)
+        hXBar := na
+    lenXA = math.abs(a - x)
+    lenAB = math.abs(b - a)
+    lenBC = math.abs(c - b)
+    lenCD = math.abs(d - c)
+    lenXC = math.abs(c - x)
+    string nm = ""
+    if showHarm and lenXA > 0 and lenAB > 0 and lenBC > 0
+        rAB = lenAB / lenXA
+        rBC = lenBC / lenAB
+        rCD = lenCD / lenBC
+        rXD = math.abs(a - d) / lenXA
+        for i = 0 to array.size(hNames) - 1
+            if inR(rAB, array.get(hAbLo, i), array.get(hAbHi, i)) and inR(rBC, 0.382, 0.886) and inR(rCD, array.get(hCdLo, i), array.get(hCdHi, i)) and inR(rXD, array.get(hXdLo, i), array.get(hXdHi, i))
+                nm := array.get(hNames, i)
+                break
+        // Cypher: C über A hinaus (1,13–1,414 × AB), D = 78,6 % von XC
+        if nm == "" and lenXC > 0 and inR(rAB, 0.382, 0.618) and inR(rBC, 1.13, 1.414) and inR(lenCD / lenXC, 0.786, 0.786)
+            nm := "Cypher"
+    if nm != ""
+        col = bull ? green : red
+        array.push(hLines, line.new(xB, x, aB, a, color = col, width = 2))
+        array.push(hLines, line.new(aB, a, bB, b, color = col, width = 2))
+        array.push(hLines, line.new(bB, b, cB, c, color = col, width = 2))
+        array.push(hLines, line.new(cB, c, dB, d, color = col, width = 2))
+        array.push(hLines, line.new(xB, x, bB, b, color = col, style = line.style_dashed))
+        array.push(hLines, line.new(bB, b, dB, d, color = col, style = line.style_dashed))
+        t1 = d + 0.382 * (a - d)
+        t2 = d + 0.618 * (a - d)
+        stopH = math.abs(a - d) / lenXA < 1 ? x : d - math.sign(a - d) * 0.13 * lenXA
+        hLbl := label.new(dB, d, nm + (bull ? " ▲" : " ▼") + "\nZiel 1: " + str.tostring(t1, format.mintick) + "\nZiel 2: " + str.tostring(t2, format.mintick) + "\nStop: " + str.tostring(stopH, format.mintick), style = bull ? label.style_label_up : label.style_label_down, color = col, textcolor = color.white, size = size.small)
+        hXBar := xB
+        patText := nm + (bull ? " bullisch" : " bärisch")
+        patCol := col
+        patBar := dB
+        harmBullNew := bull
+        harmBearNew := not bull
+
+// ─── Entstehende harmonische Muster: PRZ (Zone, in der D erwartet wird) ──────
+var box   przBox  = na
+var float przLo   = na
+var float przHi   = na
+var bool  przBull = false
+var string przName = ""
+if newPoint and array.size(zzP) >= 4
+    box.delete(przBox)
+    przBox := na
+    przLo := na
+    przHi := na
+    przName := ""
+    n = array.size(zzP)
+    x = array.get(zzP, n - 4)
+    a = array.get(zzP, n - 3)
+    b = array.get(zzP, n - 2)
+    c = array.get(zzP, n - 1)
+    cB = array.get(zzB, n - 1)
+    bullP = array.get(zzH, n - 1) // C ist ein Hoch → D wird ein Tief → bullisch
+    lenXA = math.abs(a - x)
+    lenAB = math.abs(b - a)
+    lenBC = math.abs(c - b)
+    if showPrz and lenXA > 0 and lenAB > 0 and lenBC > 0
+        rAB = lenAB / lenXA
+        rBC = lenBC / lenAB
+        dir = bullP ? -1.0 : 1.0
+        for i = 0 to array.size(hNames) - 1
+            if inR(rAB, array.get(hAbLo, i), array.get(hAbHi, i)) and inR(rBC, 0.382, 0.886)
+                xd1 = a + dir * array.get(hXdLo, i) * (1 - tol) * lenXA
+                xd2 = a + dir * array.get(hXdHi, i) * (1 + tol) * lenXA
+                cd1 = c + dir * array.get(hCdLo, i) * lenBC
+                cd2 = c + dir * array.get(hCdHi, i) * lenBC
+                lo = math.max(math.min(xd1, xd2), math.min(cd1, cd2))
+                hi = math.min(math.max(xd1, xd2), math.max(cd1, cd2))
+                if lo <= hi
+                    przLo := lo
+                    przHi := hi
+                    przName := array.get(hNames, i)
+                    przBull := bullP
+                    break
+        if przName != ""
+            pc = bullP ? green : red
+            przBox := box.new(cB, przHi, bar_index + 30, przLo, border_color = color.new(pc, 30), border_style = line.style_dashed, bgcolor = color.new(pc, 88), text = "Entstehendes " + przName + (bullP ? " ▲" : " ▼") + " – PRZ", text_color = pc, text_size = size.small, text_halign = text.align_right, text_valign = text.align_bottom)
+
+przHit = not na(przLo) and low <= przHi and high >= przLo
+przHitNew = przHit and not przHit[1]
+
+// ─── Doppelboden/-top & Schulter-Kopf-Schulter ───────────────────────────────
+var float dbNeck = na
+var int   dbBar  = na
+var float dtNeck = na
+var int   dtBar  = na
+var float hsP1 = na
+var int   hsB1 = na
+var float hsP2 = na
+var int   hsB2 = na
+var int   hsDir = 0 // 1 = SKS (bärisch), -1 = inverse SKS (bullisch)
+var int   hsBar = na
+
+if newPoint and showChartP and array.size(zzP) >= 3
+    n = array.size(zzP)
+    p1 = array.get(zzP, n - 3)
+    p2 = array.get(zzP, n - 2)
+    p3 = array.get(zzP, n - 1)
+    b1 = array.get(zzB, n - 3)
+    b3 = array.get(zzB, n - 1)
+    lastHigh = array.get(zzH, n - 1)
+    if not lastHigh and math.abs(p3 - p1) <= dTol * p1 and p2 - math.max(p1, p3) >= 2 * atrV
+        line.new(b1, p1, b3, p3, color = green, width = 2)
+        line.new(b1, p2, bar_index + 10, p2, color = color.new(#22c55e, 40), style = line.style_dashed)
+        label.new(b3, p3, "Doppelboden", style = label.style_label_up, color = color.new(#22c55e, 20), textcolor = color.white, size = size.small)
+        dbNeck := p2
+        dbBar := bar_index
+        patText := "Doppelboden (Nackenlinie " + str.tostring(p2, format.mintick) + ")"
+        patCol := green
+        patBar := b3
+    if lastHigh and math.abs(p3 - p1) <= dTol * p1 and math.min(p1, p3) - p2 >= 2 * atrV
+        line.new(b1, p1, b3, p3, color = red, width = 2)
+        line.new(b1, p2, bar_index + 10, p2, color = color.new(#f05252, 40), style = line.style_dashed)
+        label.new(b3, p3, "Doppeltop", style = label.style_label_down, color = color.new(#f05252, 20), textcolor = color.white, size = size.small)
+        dtNeck := p2
+        dtBar := bar_index
+        patText := "Doppeltop (Nackenlinie " + str.tostring(p2, format.mintick) + ")"
+        patCol := red
+        patBar := b3
+    if array.size(zzP) >= 5
+        s1 = array.get(zzP, n - 5)
+        n1 = array.get(zzP, n - 4)
+        hd = array.get(zzP, n - 3)
+        n2 = array.get(zzP, n - 2)
+        s2 = array.get(zzP, n - 1)
+        sB1 = array.get(zzB, n - 5)
+        nB1 = array.get(zzB, n - 4)
+        hB = array.get(zzB, n - 3)
+        nB2 = array.get(zzB, n - 2)
+        sB2 = array.get(zzB, n - 1)
+        isTop = lastHigh and hd - math.max(s1, s2) >= 0.5 * atrV and math.min(s1, s2) > math.max(n1, n2)
+        inv = not lastHigh and math.min(s1, s2) - hd >= 0.5 * atrV and math.max(s1, s2) < math.min(n1, n2)
+        if (isTop or inv) and math.abs(s1 - s2) <= dTol * 1.5 * hd
+            col = isTop ? red : green
+            line.new(sB1, s1, nB1, n1, color = col, width = 2)
+            line.new(nB1, n1, hB, hd, color = col, width = 2)
+            line.new(hB, hd, nB2, n2, color = col, width = 2)
+            line.new(nB2, n2, sB2, s2, color = col, width = 2)
+            line.new(nB1, n1, nB2, n2, color = color.new(col, 40), style = line.style_dashed, extend = extend.right)
+            label.new(hB, hd, isTop ? "Kopf (SKS)" : "Kopf (inverse SKS)", style = isTop ? label.style_label_down : label.style_label_up, color = color.new(col, 20), textcolor = color.white, size = size.small)
+            hsP1 := n1
+            hsB1 := nB1
+            hsP2 := n2
+            hsB2 := nB2
+            hsDir := isTop ? 1 : -1
+            hsBar := bar_index
+            patText := isTop ? "Schulter-Kopf-Schulter" : "Inverse SKS"
+            patCol := col
+            patBar := sB2
+
+// Ausbrüche über/unter die Nackenlinie (gültig max. 60 Kerzen)
+dbCross = ta.crossover(close, dbNeck)
+dtCross = ta.crossunder(close, dtNeck)
+dbBreak = not na(dbNeck) and dbCross
+dtBreak = not na(dtNeck) and dtCross
+if dbBreak or (not na(dbBar) and bar_index - dbBar > 60)
+    dbNeck := na
+    dbBar := na
+if dtBreak or (not na(dtBar) and bar_index - dtBar > 60)
+    dtNeck := na
+    dtBar := na
+neckNow = hsDir != 0 and hsB2 != hsB1 ? hsP1 + (hsP2 - hsP1) * (bar_index - hsB1) / (hsB2 - hsB1) : na
+neckPrev = hsDir != 0 and hsB2 != hsB1 ? hsP1 + (hsP2 - hsP1) * (bar_index - 1 - hsB1) / (hsB2 - hsB1) : na
+hsBreak  = hsDir == 1 and not na(neckNow) and close < neckNow and close[1] >= neckPrev
+ihsBreak = hsDir == -1 and not na(neckNow) and close > neckNow and close[1] <= neckPrev
+if hsBreak or ihsBreak or (not na(hsBar) and bar_index - hsBar > 60)
+    hsDir := 0
+    hsBar := na
+
+plotshape(dbBreak, "Ausbruch Doppelboden", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "DB ↑", textcolor = color.white, size = size.small)
+plotshape(dtBreak, "Bruch Doppeltop", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "DT ↓", textcolor = color.white, size = size.small)
+plotshape(ihsBreak, "Ausbruch inverse SKS", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "iSKS ↑", textcolor = color.white, size = size.small)
+plotshape(hsBreak, "Bruch SKS", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "SKS ↓", textcolor = color.white, size = size.small)
+
+// ─── Kerzenmuster (nur an relevanten Stellen) ─────────────────────────────────
+body = math.abs(close - open)
+rng  = high - low
+upSh = high - math.max(open, close)
+loSh = math.min(open, close) - low
+bullCtx = rsiNow < 45 or inZone
+bearCtx = rsiNow > 55
+bullEngulf = showCandle and bullCtx and close > open and close[1] < open[1] and close >= open[1] and open <= close[1] and body > body[1]
+bearEngulf = showCandle and bearCtx and close < open and close[1] > open[1] and close <= open[1] and open >= close[1] and body > body[1]
+hammer     = showCandle and bullCtx and rng > 0 and loSh >= 0.6 * rng and upSh <= 0.15 * rng
+shootStar  = showCandle and bearCtx and rng > 0 and upSh >= 0.6 * rng and loSh <= 0.15 * rng
+plotshape(bullEngulf, "Bullish Engulfing", shape.triangleup, location.belowbar, color.new(#22c55e, 30), text = "BE", size = size.tiny)
+plotshape(bearEngulf, "Bearish Engulfing", shape.triangledown, location.abovebar, color.new(#f05252, 30), text = "BE", size = size.tiny)
+plotshape(hammer, "Hammer", shape.triangleup, location.belowbar, color.new(#22c55e, 30), text = "H", size = size.tiny)
+plotshape(shootStar, "Shooting Star", shape.triangledown, location.abovebar, color.new(#f05252, 30), text = "SS", size = size.tiny)
+
+// ─── Fibonacci-Retracements des letzten großen Swings ────────────────────────
+fLen = math.min(bar_index + 1, fibLen)
+fHi = ta.highest(high, fLen)
+fLo = ta.lowest(low, fLen)
+fHiOff = ta.highestbars(high, fLen) // ≤ 0, Abstand zur aktuellen Kerze
+fLoOff = ta.lowestbars(low, fLen)
+fibUp = fHiOff > fLoOff // Hoch ist jünger als Tief → Aufwärtsswing, Retracements = Unterstützungen
+fibLevel(float r) => fibUp ? fHi - r * (fHi - fLo) : fLo + r * (fHi - fLo)
+gpA = fibLevel(0.618)
+gpB = fibLevel(0.65)
+gpTop = math.max(gpA, gpB)
+gpBot = math.min(gpA, gpB)
+gpHit = showFib and fHi > fLo and low <= gpTop and high >= gpBot
+gpHitNew = gpHit and not gpHit[1]
+
+var fibLines  = array.new_line()
+var fibLabels = array.new_label()
+var box gpBox = na
+if barstate.islast
+    for l in fibLines
+        line.delete(l)
+    array.clear(fibLines)
+    for lb in fibLabels
+        label.delete(lb)
+    array.clear(fibLabels)
+    box.delete(gpBox)
+    if showFib and fHi > fLo
+        startB = bar_index + math.min(fHiOff, fLoOff)
+        levels = array.from(0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0)
+        if showExt
+            array.push(levels, 1.272)
+            array.push(levels, 1.618)
+        for r in levels
+            // Extensions: über das Hoch (Aufwärtsswing) bzw. unter das Tief hinaus
+            p = r > 1 ? (fibUp ? fLo + r * (fHi - fLo) : fHi - r * (fHi - fLo)) : fibLevel(r)
+            fc = r == 0.618 or r == 0.5 ? color.new(#a78bfa, 0) : r > 1 ? color.new(#38bdf8, 20) : color.new(#a78bfa, 45)
+            array.push(fibLines, line.new(startB, p, bar_index + 20, p, color = fc, style = r == 0.0 or r == 1.0 ? line.style_solid : line.style_dotted))
+            array.push(fibLabels, label.new(bar_index + 20, p, (r > 1 ? "Ziel " : "Fib ") + str.tostring(r * 100, "#.#") + " %  " + str.tostring(p, format.mintick), style = label.style_label_left, color = color.new(color.black, 100), textcolor = fc, size = size.small))
+        gpBox := box.new(startB, gpTop, bar_index + 20, gpBot, border_color = color.new(#a78bfa, 60), bgcolor = color.new(#a78bfa, 85), text = "Golden Pocket", text_color = color.new(#a78bfa, 0), text_size = size.small, text_halign = text.align_left)
+
+// Nächstes Fibonacci-Level zum aktuellen Kurs (für die Tabelle)
+nearestFib() =>
+    string res = "–"
+    float best = na
+    for r in array.from(0.236, 0.382, 0.5, 0.618, 0.786)
+        p = fibLevel(r)
+        dst = math.abs(close - p) / close * 100
+        if na(best) or dst < best
+            best := dst
+            res := str.tostring(r * 100, "#.#") + " % (" + str.tostring(p, format.mintick) + ", " + str.tostring(dst, "#.#") + " % entfernt)"
+    res
+
 // ─── Zeichnen ─────────────────────────────────────────────────────────────────
 plot(showSma ? s50 : na, "SMA 50", color = #fbbf24, linewidth = 2)
 plot(showSma ? s200 : na, "SMA 200", color = #60a5fa, linewidth = 2)
@@ -118,14 +457,13 @@ if barstate.islast
         if z200ok
             bx200 := box.new(left, s200 * 1.02, right, s200 * 0.97, border_color = color.new(#60a5fa, 50), bgcolor = color.new(#60a5fa, 85), text = "Kaufzone: Test der 200-Tage-Linie", text_color = color.new(#60a5fa, 0), text_size = size.small, text_halign = text.align_right)
 
-var table tbl = table.new(position.top_right, 2, 10, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1)
+var table tbl = table.new(position.top_right, 2, 13, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1)
 fmt(v, f) => na(v) ? "–" : str.tostring(v, f)
 sgn(v, f) => na(v) ? "–" : (v > 0 ? "+" : "") + str.tostring(v, f)
 row(r, k, v, c) =>
     table.cell(tbl, 0, r, k, text_color = color.new(#8f99a8, 0), text_size = size.small, text_halign = text.align_left)
     table.cell(tbl, 1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
 if barstate.islast and showTable
-    white = color.new(#e8ebf0, 0)
     row(0, "Trendradar", signalText, signalCol)
     row(1, "Score", sgn(score, "#") + " / 100", signalCol)
     row(2, "Empfehlung", actionText, actionCol)
@@ -136,6 +474,9 @@ if barstate.islast and showTable
     row(7, "Abst. SMA 200", sgn(dist200, "#.#") + " %", not na(dist200) and dist200 >= 0 ? color.new(#22c55e, 0) : color.new(#f05252, 0))
     row(8, "Perf. 3 M / 12 M", sgn(perf3m, "#") + " % / " + sgn(perf12m, "#") + " %", white)
     row(9, "Stop-Loss", fmt(stopLoss, "#.##"), color.new(#f05252, 0))
+    row(10, "Muster", not na(patBar) and bar_index - patBar <= 40 ? patText : "–", not na(patBar) and bar_index - patBar <= 40 ? patCol : white)
+    row(11, "PRZ", przName != "" ? przName + " " + str.tostring(przLo, format.mintick) + " – " + str.tostring(przHi, format.mintick) : "–", przBull ? green : red)
+    row(12, "Nächstes Fib", showFib ? nearestFib() + (fibUp ? " ↑-Swing" : " ↓-Swing") : "–", color.new(#a78bfa, 0))
 
 // ─── Alarme (in TradingView: Alarm erstellen → Bedingung „Trendradar“) ────────
 near200 = not na(dist200) and math.abs(dist200) <= band200
@@ -146,3 +487,11 @@ alertcondition(score >= 25 and score[1] < 25, "Signal wird bullisch", "{{ticker}
 alertcondition(score <= -25 and score[1] > -25, "Signal wird bärisch", "{{ticker}}: Trendradar-Signal ist bärisch – Kurs {{close}}")
 alertcondition(ta.crossover(s50, s200), "Golden Cross", "{{ticker}}: SMA 50 kreuzt SMA 200 nach oben")
 alertcondition(ta.crossunder(s50, s200), "Death Cross", "{{ticker}}: SMA 50 kreuzt SMA 200 nach unten")
+alertcondition(harmBullNew, "Harmonisches Muster bullisch", "{{ticker}}: Bullisches harmonisches Muster (Gartley/Bat/Butterfly/Crab/Cypher) abgeschlossen – Kurs {{close}}")
+alertcondition(harmBearNew, "Harmonisches Muster bärisch", "{{ticker}}: Bärisches harmonisches Muster abgeschlossen – Kurs {{close}}")
+alertcondition(przHitNew, "Kurs erreicht PRZ", "{{ticker}}: Kurs erreicht die Umkehrzone (PRZ) eines entstehenden harmonischen Musters – Kurs {{close}}")
+alertcondition(gpHitNew, "Golden Pocket erreicht", "{{ticker}}: Kurs im Fibonacci Golden Pocket (61,8–65 %) – Kurs {{close}}")
+alertcondition(dbBreak or ihsBreak, "Bullischer Formations-Ausbruch", "{{ticker}}: Ausbruch aus Doppelboden / inverser SKS – Kurs {{close}}")
+alertcondition(dtBreak or hsBreak, "Bärischer Formations-Bruch", "{{ticker}}: Bruch der Nackenlinie (Doppeltop / SKS) – Kurs {{close}}")
+alertcondition(bullEngulf or hammer, "Bullische Kerze", "{{ticker}}: Bullisches Kerzenmuster (Engulfing/Hammer) an relevanter Stelle – Kurs {{close}}")
+alertcondition(bearEngulf or shootStar, "Bärische Kerze", "{{ticker}}: Bärisches Kerzenmuster (Engulfing/Shooting Star) – Kurs {{close}}")

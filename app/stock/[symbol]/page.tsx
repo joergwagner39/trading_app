@@ -3,7 +3,8 @@ import { use, useState } from "react";
 import dynamic from "next/dynamic";
 import { useJson } from "@/lib/useJson";
 import type { Analysis } from "@/lib/analysis";
-import type { History, NewsItem } from "@/lib/data";
+import type { History, Holdings, NewsItem } from "@/lib/data";
+import Link from "next/link";
 import { fmtNum, fmtPct, fmtPrice, relTime } from "@/lib/format";
 import SignalBadge from "@/components/SignalBadge";
 import WatchButton from "@/components/WatchButton";
@@ -117,6 +118,7 @@ export default function StockPage({ params }: { params: Promise<{ symbol: string
       </div>
 
       <PatternCard a={a} candles={data.candles} currency={cur} />
+      {data.type === "ETF" && <HoldingsCard symbol={data.symbol} />}
 
       <section className="card">
         <h2>Kennzahlen</h2>
@@ -236,6 +238,38 @@ function PatternCard({ a, candles, currency }: { a: Analysis; candles: Detail["c
           </ul>
         </div>
       </div>
+    </section>
+  );
+}
+
+function HoldingsCard({ symbol }: { symbol: string }) {
+  const { data, loading } = useJson<Holdings>(`/api/holdings/${encodeURIComponent(symbol)}`);
+  if (loading && !data) return null;
+  if (!data || data.holdings.length === 0) return null;
+  const max = Math.max(...data.holdings.map((h) => h.weight ?? 0), 1);
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Größte Positionen</h2>
+        <Link className="btn small" href={`/screener?holdings=${encodeURIComponent(symbol)}`}>Im Screener analysieren →</Link>
+      </div>
+      {data.source === "liste" && <p className="muted small">Yahoo liefert für diesen ETF keine Positionen – angezeigt werden passende Aktien aus der Sektorliste.</p>}
+      <ul className="holdings">
+        {data.holdings.slice(0, 15).map((h) => (
+          <li key={h.symbol}>
+            <Link href={`/stock/${encodeURIComponent(h.symbol)}`}>
+              <b>{h.symbol}</b>
+              <span>{h.name !== h.symbol ? h.name : ""}</span>
+            </Link>
+            {h.weight != null && (
+              <span className="hbar" title={`${fmtNum(h.weight, 1)} %`}>
+                <i style={{ width: `${(h.weight / max) * 100}%` }} />
+                <small>{fmtNum(h.weight, 1)} %</small>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

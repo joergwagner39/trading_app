@@ -174,6 +174,8 @@ table.scan { width: 100%; border-collapse: collapse; }
 .scan .act { width: 1%; padding-left: 0; }
 .etf-hint { font-size: 0.9rem; background: var(--surface-2); border-radius: 10px; padding: 8px 12px; }
 .etf-hint a { color: var(--accent); }
+.holdings-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--accent); }
+.btn.small { padding: 4px 10px; font-size: 0.82rem; white-space: nowrap; }
 .scan .sector { font-size: 0.8rem; color: var(--text-2); }
 .meter { display: inline-flex; align-items: center; gap: 8px; }
 .meter .bar { width: 70px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
@@ -258,6 +260,15 @@ table.scan { width: 100%; border-collapse: collapse; }
 .patterns li.up { border-left-color: var(--up); }
 .patterns li.down { border-left-color: var(--down); }
 .patterns small { color: var(--text-2); }
+
+.holdings { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.holdings li { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.holdings li:last-child { border-bottom: 0; }
+.holdings a { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.holdings a span { color: var(--text-2); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar { display: flex; align-items: center; gap: 8px; }
+.hbar i { display: block; height: 6px; border-radius: 3px; background: var(--accent); }
+.hbar small { color: var(--text-2); white-space: nowrap; }
 
 /* ---- Mobile ---- */
 @media (max-width: 860px) {

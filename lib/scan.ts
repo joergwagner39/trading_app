@@ -8,12 +8,13 @@ export type ScanRow = {
   name: string;
   currency: string;
   sector: string;
+  weight?: number | null; // Gewichtung im ETF (nur bei ETF-Positionen)
   signal: Signal;
   score: number;
   metrics: Metrics;
 };
 
-export type ScanResult = { rows: ScanRow[]; failed: string[]; demo: boolean; at: string };
+export type ScanResult = { rows: ScanRow[]; failed: string[]; demo: boolean; at: string; etf?: { symbol: string; name: string; source: string } | null };
 
 export async function scan(symbols: string[], maxAgeMs = 15 * 60_000): Promise<ScanResult> {
   const failed: string[] = [];

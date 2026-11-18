@@ -7,13 +7,14 @@ import SignalBadge from "./SignalBadge";
 import WatchButton from "./WatchButton";
 import { useWatchlist } from "@/lib/watchlist";
 
-export type ColId = "sector" | "price" | "change" | "signal" | "trend" | "rsi" | "dist200" | "dist200w" | "adx" | "perf3m" | "perf6m" | "perf12m" | "high52";
+export type ColId = "weight" | "sector" | "price" | "change" | "signal" | "trend" | "rsi" | "dist200" | "dist200w" | "adx" | "perf3m" | "perf6m" | "perf12m" | "high52";
 
 type Col = { id: ColId; label: string; get: (r: ScanRow) => number | null; render: (r: ScanRow) => React.ReactNode; hideSm?: boolean };
 
 const tone = (v: number | null | undefined) => (v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
 
 const COLS: Record<ColId, Col> = {
+  weight: { id: "weight", label: "Anteil im ETF", get: (r) => r.weight ?? null, render: (r) => (r.weight != null ? fmtNum(r.weight, 1) + " %" : "–") },
   sector: { id: "sector", label: "Sektor", get: () => null, render: (r) => <span className="sector">{r.sector}</span>, hideSm: true },
   price: { id: "price", label: "Kurs", get: (r) => r.metrics.price, render: (r) => fmtPrice(r.metrics.price, r.currency) },
   change: { id: "change", label: "Tag", get: (r) => r.metrics.changePct, render: (r) => <span className={tone(r.metrics.changePct)}>{fmtPct(r.metrics.changePct)}</span> },
@@ -46,12 +47,14 @@ export default function ScanTable({
   initialSort,
   empty = "Keine Treffer.",
   removable = false,
+  rowAction,
 }: {
   rows: ScanRow[];
   cols: ColId[];
   initialSort: { col: ColId | "name"; dir: 1 | -1 };
   empty?: string;
   removable?: boolean;
+  rowAction?: (r: ScanRow) => React.ReactNode;
 }) {
   const [sort, setSort] = useState(initialSort);
   const sorted = useMemo(() => {
@@ -83,6 +86,7 @@ export default function ScanTable({
           <tr>
             {head("name", "Aktie", "name")}
             {cols.map((c) => head(c, COLS[c].label, COLS[c].hideSm ? "hide-sm" : ""))}
+            {rowAction && <th className="act" aria-label="Aktionen" />}
             <th className="act" aria-label="Watchlist" />
           </tr>
         </thead>
@@ -98,6 +102,7 @@ export default function ScanTable({
               {cols.map((c) => (
                 <td key={c} className={`num ${COLS[c].hideSm ? "hide-sm" : ""}`}>{COLS[c].render(r)}</td>
               ))}
+              {rowAction && <td className="act">{rowAction(r)}</td>}
               <td className="act">{removable ? <RemoveButton symbol={r.symbol} /> : <WatchButton symbol={r.symbol} compact />}</td>
             </tr>
           ))}

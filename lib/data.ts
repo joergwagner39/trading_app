@@ -1,7 +1,7 @@
 import "server-only";
 import YahooFinance from "yahoo-finance2";
 import type { Candle } from "./indicators";
-import { ALL_SYMBOLS } from "./universe";
+import { ALL_SYMBOLS, etfName, fallbackHoldings, isKnownEtf } from "./universe";
 
 // Datenquelle: Yahoo Finance (kein API-Key nötig).
 // Mit DEMO_DATA=1 werden synthetische Kurse erzeugt – nur zum Entwickeln/Testen.
@@ -14,6 +14,7 @@ export type History = {
   name: string;
   currency: string;
   exchange: string;
+  type: string; // EQUITY, ETF, INDEX …
   candles: Candle[];
   demo: boolean;
 };
@@ -26,6 +27,31 @@ export type NewsItem = {
   time: string; // ISO
   thumbnail?: string;
 };
+
+export type Holding = { symbol: string; name: string; weight: number | null };
+export type Holdings = { etf: string; name: string; holdings: Holding[]; source: "yahoo" | "liste" };
+
+/** Größte Positionen eines ETFs (Yahoo); sonst Ersatz aus den eigenen Sektorlisten. */
+export async function getHoldings(symbol: string): Promise<Holdings> {
+  symbol = normalizeSymbol(symbol);
+  return cached(`etf:${symbol}`, 24 * 3600_000, async () => {
+    if (!DEMO) {
+      try {
+        const res = await yf.quoteSummary(symbol, { modules: ["topHoldings"] });
+        const hs = (res.topHoldings?.holdings ?? [])
+          .filter((h) => h.symbol)
+          .map((h) => ({ symbol: h.symbol.toUpperCase(), name: h.holdingName, weight: h.holdingPercent != null ? h.holdingPercent * 100 : null }));
+        // Europäische ETFs: Yahoo liefert teils Symbole ohne Börsenkürzel → dann lieber Ersatzliste
+        const euOk = !symbol.includes(".") || hs.filter((h) => h.symbol.includes(".")).length >= hs.length / 2;
+        if (hs.length >= 3 && euOk) return { etf: symbol, name: etfName(symbol), holdings: hs, source: "yahoo" as const };
+      } catch {
+        // weiter mit Ersatzliste
+      }
+    }
+    const fb = fallbackHoldings(symbol);
+    return { etf: symbol, name: etfName(symbol), holdings: fb.map((s) => ({ symbol: s, name: s, weight: null })), source: "liste" as const };
+  });
+}
 
 export type SearchHit = { symbol: string; name: string; exchange: string; type: string };
 
@@ -74,6 +100,7 @@ export async function getHistory(symbol: string, maxAgeMs = 60_000): Promise<His
       name: String(meta.longName ?? meta.shortName ?? symbol),
       currency: res.meta.currency ?? "",
       exchange: res.meta.fullExchangeName ?? res.meta.exchangeName ?? "",
+      type: String(res.meta.instrumentType ?? "EQUITY"),
       candles: [...byDay.values()],
       demo: false,
     };
@@ -172,7 +199,7 @@ function demoHistory(symbol: string, years: number): History {
     candles.push({ time: toDay(d), open, high, low, close, volume: Math.round(1e5 + r() * 5e6) });
     price = close;
   }
-  return { symbol, name: demoName(symbol), currency: symbol.endsWith(".DE") ? "EUR" : "USD", exchange: "DEMO", candles, demo: true };
+  return { symbol, name: demoName(symbol), currency: symbol.endsWith(".DE") ? "EUR" : "USD", exchange: "DEMO", type: isKnownEtf(symbol) ? "ETF" : "EQUITY", candles, demo: true };
 }
 function demoNews(symbol: string): NewsItem[] {
   const now = Date.now();

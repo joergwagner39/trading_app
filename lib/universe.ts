@@ -67,6 +67,8 @@ const EU: Record<string, Sector> = {
   "BBVA.MC": "Banken & Finanzen", "BNP.PA": "Banken & Finanzen", "SAF.PA": "Rüstung & Luftfahrt", "REL.L": "Medien & Unterhaltung",
   "RIO.L": "Chemie & Rohstoffe", "ADYEN.AS": "Banken & Finanzen", "BA.L": "Rüstung & Luftfahrt", "LDO.MI": "Rüstung & Luftfahrt",
   "STMPA.PA": "Halbleiter", "IBE.MC": "Versorger", "BP.L": "Energie (Öl & Gas)", "AIR.PA": "Rüstung & Luftfahrt",
+  "ORA.PA": "Telekommunikation", "TEF.MC": "Telekommunikation", "VOD.L": "Telekommunikation", "KPN.AS": "Telekommunikation",
+  "LEG.DE": "Immobilien", "PUB.PA": "Medien & Unterhaltung", "WPP.L": "Medien & Unterhaltung",
 };
 
 // US-Sektor-ETFs (Select Sector SPDRs + Halbleiter/Rüstung) mit deutscher Sektorbezeichnung
@@ -107,19 +109,90 @@ export const ETF_FOR_SECTOR: Record<Sector, string> = {
   "Medien & Unterhaltung": "XLC",
 };
 
-export type UniverseId = "de" | "us" | "eu" | "all" | "etf";
+// Europäische Sektor-ETFs: iShares STOXX Europe 600 (Xetra)
+export const EU_SECTOR_ETFS: Record<string, string> = {
+  "EXV1.DE": "Europa Banken",
+  "EXH5.DE": "Europa Versicherungen",
+  "EXH2.DE": "Europa Finanzdienstleister",
+  "EXV3.DE": "Europa Technologie",
+  "EXV4.DE": "Europa Gesundheit",
+  "EXV5.DE": "Europa Automobil",
+  "EXH4.DE": "Europa Industrie",
+  "EXV8.DE": "Europa Bau & Baustoffe",
+  "EXV7.DE": "Europa Chemie",
+  "EXV6.DE": "Europa Rohstoffe",
+  "EXH1.DE": "Europa Öl & Gas",
+  "EXH9.DE": "Europa Versorger",
+  "EXV2.DE": "Europa Telekom",
+  "EXH6.DE": "Europa Medien",
+  "EXH3.DE": "Europa Nahrungsmittel & Getränke",
+  "EXH7.DE": "Europa Konsumgüter",
+  "EXH8.DE": "Europa Einzelhandel",
+  "EXV9.DE": "Europa Reise & Freizeit",
+  "EXI5.DE": "Europa Immobilien",
+};
 
-const SECTOR_OF: Record<string, string> = { ...DE, ...US, ...EU, ...SECTOR_ETFS };
+// Ersatz, falls Yahoo keine Positionen liefert: Aktien aus unseren Listen mit passendem Sektor
+const ETF_FALLBACK: Record<string, { sectors: Sector[]; markets: ("de" | "us" | "eu")[] }> = {
+  XLK: { sectors: ["Software & IT", "Hardware & Netzwerk", "Halbleiter"], markets: ["us"] },
+  XLC: { sectors: ["Internet & Plattformen", "Telekommunikation", "Medien & Unterhaltung"], markets: ["us"] },
+  XLY: { sectors: ["Automobil", "Konsum & Handel", "Internet & Plattformen"], markets: ["us"] },
+  XLP: { sectors: ["Konsum & Handel"], markets: ["us"] },
+  XLF: { sectors: ["Banken & Finanzen", "Versicherungen"], markets: ["us"] },
+  XLV: { sectors: ["Gesundheit & Pharma"], markets: ["us"] },
+  XLI: { sectors: ["Industrie", "Rüstung & Luftfahrt"], markets: ["us"] },
+  XLE: { sectors: ["Energie (Öl & Gas)"], markets: ["us"] },
+  XLB: { sectors: ["Chemie & Rohstoffe"], markets: ["us"] },
+  XLU: { sectors: ["Versorger"], markets: ["us"] },
+  XLRE: { sectors: ["Immobilien"], markets: ["us"] },
+  SMH: { sectors: ["Halbleiter"], markets: ["us", "eu", "de"] },
+  ITA: { sectors: ["Rüstung & Luftfahrt"], markets: ["us"] },
+  "EXV1.DE": { sectors: ["Banken & Finanzen"], markets: ["de", "eu"] },
+  "EXH5.DE": { sectors: ["Versicherungen"], markets: ["de", "eu"] },
+  "EXH2.DE": { sectors: ["Banken & Finanzen"], markets: ["de", "eu"] },
+  "EXV3.DE": { sectors: ["Software & IT", "Halbleiter", "Hardware & Netzwerk"], markets: ["de", "eu"] },
+  "EXV4.DE": { sectors: ["Gesundheit & Pharma"], markets: ["de", "eu"] },
+  "EXV5.DE": { sectors: ["Automobil"], markets: ["de", "eu"] },
+  "EXH4.DE": { sectors: ["Industrie", "Rüstung & Luftfahrt"], markets: ["de", "eu"] },
+  "EXV8.DE": { sectors: ["Chemie & Rohstoffe", "Industrie"], markets: ["de", "eu"] },
+  "EXV7.DE": { sectors: ["Chemie & Rohstoffe"], markets: ["de", "eu"] },
+  "EXV6.DE": { sectors: ["Chemie & Rohstoffe"], markets: ["de", "eu"] },
+  "EXH1.DE": { sectors: ["Energie (Öl & Gas)"], markets: ["de", "eu"] },
+  "EXH9.DE": { sectors: ["Versorger"], markets: ["de", "eu"] },
+  "EXV2.DE": { sectors: ["Telekommunikation"], markets: ["de", "eu"] },
+  "EXH6.DE": { sectors: ["Medien & Unterhaltung"], markets: ["de", "eu"] },
+  "EXH3.DE": { sectors: ["Konsum & Handel"], markets: ["de", "eu"] },
+  "EXH7.DE": { sectors: ["Konsum & Handel"], markets: ["de", "eu"] },
+  "EXH8.DE": { sectors: ["Konsum & Handel"], markets: ["de", "eu"] },
+  "EXV9.DE": { sectors: ["Konsum & Handel"], markets: ["de", "eu"] },
+  "EXI5.DE": { sectors: ["Immobilien"], markets: ["de", "eu"] },
+};
+
+export type UniverseId = "de" | "us" | "eu" | "all" | "etf" | "etfeu";
+
+const SECTOR_OF: Record<string, string> = { ...DE, ...US, ...EU, ...SECTOR_ETFS, ...EU_SECTOR_ETFS };
 
 export const UNIVERSES: Record<UniverseId, { name: string; symbols: string[] }> = {
   all: { name: "Alle Märkte (Aktien)", symbols: Object.keys({ ...DE, ...US, ...EU }).filter((s) => s !== "AIR.PA") },
   de: { name: "Deutschland (DAX-Werte)", symbols: Object.keys(DE) },
   us: { name: "USA (Large Caps)", symbols: Object.keys(US) },
   eu: { name: "Europa (Large Caps)", symbols: Object.keys(EU).filter((s) => s !== "AIR.PA") },
-  etf: { name: "Sektor-ETFs (USA: XLK, XLF, XLRE …)", symbols: Object.keys(SECTOR_ETFS) },
+  etf: { name: "Sektor-ETFs USA (XLK, XLF, XLRE …)", symbols: Object.keys(SECTOR_ETFS) },
+  etfeu: { name: "Sektor-ETFs Europa (STOXX 600)", symbols: Object.keys(EU_SECTOR_ETFS) },
 };
 
-export const ALL_SYMBOLS = [...UNIVERSES.all.symbols, ...UNIVERSES.etf.symbols];
+export const ALL_SYMBOLS = [...UNIVERSES.all.symbols, ...UNIVERSES.etf.symbols, ...UNIVERSES.etfeu.symbols];
+
+export const isKnownEtf = (s: string) => s in SECTOR_ETFS || s in EU_SECTOR_ETFS;
+export const etfName = (s: string) => SECTOR_ETFS[s] ?? EU_SECTOR_ETFS[s] ?? s;
+
+/** Ersatz-Positionen eines Sektor-ETFs aus den eigenen Listen. */
+export function fallbackHoldings(etf: string): string[] {
+  const f = ETF_FALLBACK[etf];
+  if (!f) return [];
+  const lists = { de: DE, us: US, eu: EU };
+  return f.markets.flatMap((m) => Object.entries(lists[m]).filter(([, sec]) => f.sectors.includes(sec)).map(([sym]) => sym)).filter((s) => s !== "AIR.PA");
+}
 
 /** Sektor eines Symbols (bei ETFs der abgebildete Sektor); unbekannte (z. B. eigene Watchlist-Werte) → "Sonstige". */
 export function sectorOf(symbol: string): string {
@@ -127,4 +200,4 @@ export function sectorOf(symbol: string): string {
 }
 
 /** Reihenfolge der Sektoren für Auswahllisten. */
-export const SECTOR_ORDER: string[] = [...SECTORS, ...Object.values(SECTOR_ETFS), "Sonstige"];
+export const SECTOR_ORDER: string[] = [...SECTORS, ...Object.values(SECTOR_ETFS), ...Object.values(EU_SECTOR_ETFS), "Sonstige"];

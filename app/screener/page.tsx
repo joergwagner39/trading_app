@@ -27,6 +27,8 @@ export default function ScreenerPage() {
   const [sector, setSector] = useState("");
   const [rsiMax, setRsiMax] = useState(30);
   const [onlyUp, setOnlyUp] = useState(false);
+  // ETF, dessen Positionen gerade angezeigt werden (z. B. XLK)
+  const [holdingsOf, setHoldingsOf] = useState<string | null>(null);
 
   // Auswahl merken
   useEffect(() => {
@@ -36,6 +38,9 @@ export default function ScreenerPage() {
       if (s.source) setSource(s.source);
       if (s.sector) setSector(s.sector);
     } catch {}
+    // Direktlink /screener?holdings=XLK (z. B. von der ETF-Seite)
+    const h = new URLSearchParams(window.location.search).get("holdings");
+    if (h) setHoldingsOf(h.toUpperCase());
   }, []);
   useEffect(() => {
     try {
@@ -43,8 +48,9 @@ export default function ScreenerPage() {
     } catch {}
   }, [tab, source, sector]);
 
-  const url =
-    source === "watchlist"
+  const url = holdingsOf
+    ? `/api/scan?holdings=${encodeURIComponent(holdingsOf)}`
+    : source === "watchlist"
       ? wl.list.length ? `/api/scan?symbols=${encodeURIComponent(wl.list.join(","))}` : null
       : `/api/scan?universe=${source}`;
   const { data, error, loading } = useJson<ScanResult>(url);
@@ -84,7 +90,7 @@ export default function ScreenerPage() {
       <div className="filters">
         <label>
           Markt
-          <select value={source} onChange={(e) => setSource(e.target.value as Source)}>
+          <select value={source} onChange={(e) => (setSource(e.target.value as Source), setHoldingsOf(null))}>
             {(Object.keys(UNIVERSES) as UniverseId[]).map((u) => (
               <option key={u} value={u}>{UNIVERSES[u].name}</option>
             ))}
@@ -138,29 +144,47 @@ export default function ScreenerPage() {
           · zeigt, wie stark der ganze Sektor gerade läuft
         </p>
       )}
-      {source === "etf" && (
-        <p className="muted small">Sektor-Rotation: Die Trendstärke zeigt, welche Sektoren gerade führen und welche schwächeln.</p>
+      {holdingsOf && (
+        <div className="etf-hint holdings-banner">
+          <span>
+            Aktien in <b>{holdingsOf}</b>
+            {data?.etf ? <> – {data.etf.name}</> : null}
+            {data?.etf?.source === "liste" ? " (aus der Sektorliste – Yahoo liefert für diesen ETF keine Positionen)" : " (größte Positionen)"}
+          </span>
+          <button className="btn ghost" onClick={() => setHoldingsOf(null)}>← Zurück zu den ETFs</button>
+        </div>
+      )}
+      {!holdingsOf && (source === "etf" || source === "etfeu") && (
+        <p className="muted small">Sektor-Rotation: Die Trendstärke zeigt, welche Sektoren gerade führen und welche schwächeln. Mit „Aktien →“ siehst du die Positionen eines ETFs.</p>
       )}
       {data?.demo && <DemoNote />}
       {error && <p className="error">Fehler: {error}</p>}
-      {loading && <p className="muted loading">Analysiere {source === "watchlist" ? wl.list.length : UNIVERSES[source].symbols.length} Aktien… (kann beim ersten Mal 10–30 Sek. dauern)</p>}
+      {loading && <p className="muted loading">Analysiere {holdingsOf ? `die Positionen von ${holdingsOf}` : `${source === "watchlist" ? wl.list.length : UNIVERSES[source].symbols.length} Werte`}… (kann beim ersten Mal 10–30 Sek. dauern)</p>}
 
       {data && !loading && (
         <>
-          <p className="muted small">{rows.length} von {all.length} {source === "etf" ? "ETFs" : "Aktien"} · Stand {new Date(data.at).toLocaleString("de-DE")}</p>
+          <p className="muted small">{rows.length} von {all.length} {!holdingsOf && (source === "etf" || source === "etfeu") ? "ETFs" : "Aktien"} · Stand {new Date(data.at).toLocaleString("de-DE")}</p>
           {tab === "trend" && (
-            <ScanTable rows={rows} cols={["sector", "price", "trend", "signal", "perf3m", "perf6m", "perf12m", "high52"]} initialSort={{ col: "trend", dir: -1 }} />
+            <ScanTable rowAction={!holdingsOf && (source === "etf" || source === "etfeu") ? (r) => (
+                <button className="btn small" onClick={() => (setHoldingsOf(r.symbol), window.scrollTo({ top: 0 }))}>Aktien →</button>
+              ) : undefined} rows={rows} cols={[...(holdingsOf && loaded.some((r) => r.weight != null) ? (["weight"] as const) : []), "sector", "price", "trend", "signal", "perf3m", "perf6m", "perf12m", "high52"]} initialSort={{ col: "trend", dir: -1 }} />
           )}
           {tab === "sma200" && (
-            <ScanTable rows={rows} cols={["sector", "price", "dist200", "signal", "rsi", "trend", "perf3m"]} initialSort={{ col: "trend", dir: -1 }}
+            <ScanTable rowAction={!holdingsOf && (source === "etf" || source === "etfeu") ? (r) => (
+                <button className="btn small" onClick={() => (setHoldingsOf(r.symbol), window.scrollTo({ top: 0 }))}>Aktien →</button>
+              ) : undefined} rows={rows} cols={[...(holdingsOf && loaded.some((r) => r.weight != null) ? (["weight"] as const) : []), "sector", "price", "dist200", "signal", "rsi", "trend", "perf3m"]} initialSort={{ col: "trend", dir: -1 }}
               empty={`Keine Aktie innerhalb ±${band} % der 200-Tage-Linie.`} />
           )}
           {tab === "sma200w" && (
-            <ScanTable rows={rows} cols={["sector", "price", "dist200w", "dist200", "signal", "rsi", "perf12m"]} initialSort={{ col: "trend", dir: -1 }}
+            <ScanTable rowAction={!holdingsOf && (source === "etf" || source === "etfeu") ? (r) => (
+                <button className="btn small" onClick={() => (setHoldingsOf(r.symbol), window.scrollTo({ top: 0 }))}>Aktien →</button>
+              ) : undefined} rows={rows} cols={[...(holdingsOf && loaded.some((r) => r.weight != null) ? (["weight"] as const) : []), "sector", "price", "dist200w", "dist200", "signal", "rsi", "perf12m"]} initialSort={{ col: "trend", dir: -1 }}
               empty={`Keine Aktie innerhalb ±${band200w} % der 200-Wochen-Linie.`} />
           )}
           {tab === "rsi" && (
-            <ScanTable rows={rows} cols={["sector", "price", "rsi", "dist200", "signal", "change", "perf3m"]} initialSort={{ col: "rsi", dir: 1 }}
+            <ScanTable rowAction={!holdingsOf && (source === "etf" || source === "etfeu") ? (r) => (
+                <button className="btn small" onClick={() => (setHoldingsOf(r.symbol), window.scrollTo({ top: 0 }))}>Aktien →</button>
+              ) : undefined} rows={rows} cols={[...(holdingsOf && loaded.some((r) => r.weight != null) ? (["weight"] as const) : []), "sector", "price", "rsi", "dist200", "signal", "change", "perf3m"]} initialSort={{ col: "rsi", dir: 1 }}
               empty={`Aktuell keine Aktie mit RSI unter ${rsiMax}.`} />
           )}
         </>

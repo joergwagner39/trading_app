@@ -59,3 +59,13 @@ Danach die URL auf Handy/Desktop öffnen und als App installieren.
 ## Hinweis
 
 Keine Anlageberatung. Alle Signale werden automatisch aus technischen Indikatoren berechnet.
+
+## TradingView-Indikator
+
+`tradingview/trendradar.pine` enthält dieselbe Analyse als TradingView-Indikator
+(Signal & Score, Empfehlung, Kaufzonen, Stop-Loss, Trendstärke) – live in deinen TradingView-Charts.
+
+1. In TradingView einen Chart öffnen (Zeitraum **1D**), unten **Pine-Editor** öffnen.
+2. Inhalt der Datei einfügen → **Zum Chart hinzufügen**, danach **Speichern**.
+3. Alarme: **Alarm erstellen** → Bedingung „Trendradar“ → z. B. „RSI unter Schwelle“,
+   „An der 200-Tage-Linie“ oder „Aufstock-Signal“. Funktioniert auch auf einer ganzen Watchlist (je nach TradingView-Plan).

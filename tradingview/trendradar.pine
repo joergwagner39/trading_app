@@ -1,0 +1,148 @@
+// Trendradar – Chartanalyse wie in der Trendradar-App, als TradingView-Indikator.
+// Gedacht für den Tageschart (1D). Keine Anlageberatung.
+//@version=6
+indicator("Trendradar", shorttitle = "Trendradar", overlay = true, max_boxes_count = 10, max_labels_count = 100)
+
+// ─── Einstellungen ────────────────────────────────────────────────────────────
+showSma   = input.bool(true, "SMA 50 / 200 anzeigen", group = "Anzeige")
+showZones = input.bool(true, "Kaufzonen anzeigen", group = "Anzeige")
+showTable = input.bool(true, "Analyse-Tabelle anzeigen", group = "Anzeige")
+showBuy   = input.bool(true, "Aufstock-Signale markieren", group = "Anzeige")
+rsiTh     = input.int(30, "RSI-Schwelle (überverkauft)", minval = 5, maxval = 50, group = "Alarme")
+band200   = input.float(3.0, "Abstand zur 200-Tage-Linie (± %)", minval = 0.5, maxval = 15, step = 0.5, group = "Alarme")
+
+// ─── Indikatoren ──────────────────────────────────────────────────────────────
+s50  = ta.sma(close, 50)
+s200 = ta.sma(close, 200)
+rsiV = ta.rsi(close, 14)
+[macdL, sigL, hist] = ta.macd(close, 12, 26, 9)
+[diPlus, diMinus, adxV] = ta.dmi(14, 14)
+atrV = ta.atr(14)
+
+perf(n) => bar_index >= n ? (close / close[n] - 1) * 100 : na
+perf3m  = perf(63)
+perf6m  = perf(126)
+perf12m = perf(252)
+dist200 = not na(s200) ? (close / s200 - 1) * 100 : na
+rising200 = not na(s200) and not na(s200[20]) ? s200 > s200[20] : false
+hi52 = ta.highest(high, math.min(bar_index + 1, 252))
+distHigh = (close / hi52 - 1) * 100
+
+clamp(v, lo, hi) => math.max(lo, math.min(hi, v))
+
+// ─── Bullisch/Bärisch-Score (−100 … +100) ─────────────────────────────────────
+float score = 0.0
+score += not na(s200) ? (close > s200 ? 20 : -20) : 0
+score += not na(s50) and not na(s200) ? (s50 > s200 ? 15 : -15) : 0
+score += not na(s50) ? (close > s50 ? 10 : -10) : 0
+score += not na(s200) and not na(s200[20]) ? (rising200 ? 10 : -10) : 0
+score += not na(hist) ? (hist > 0 ? 10 : -10) : 0
+score += not na(perf3m) ? (perf3m > 0 ? 10 : -10) : 0
+if not na(rsiV)
+    score += rsiV >= 70 ? -5 : rsiV <= 30 ? 5 : rsiV >= 50 ? 10 : -10
+if not na(adxV)
+    score := adxV >= 25 ? score * 1.15 : adxV < 20 ? score * 0.85 : score
+score := math.round(clamp(score, -100, 100))
+
+signalText = score >= 60 ? "Stark bullisch" : score >= 25 ? "Bullisch" : score > -25 ? "Neutral" : score > -60 ? "Bärisch" : "Stark bärisch"
+signalCol  = score >= 25 ? color.new(#22c55e, 0) : score <= -25 ? color.new(#f05252, 0) : color.new(#eab308, 0)
+
+// ─── Trendstärke (0–100) wie im Screener ──────────────────────────────────────
+float trend = 0.0
+trend += not na(s50) and close > s50 ? 15 : 0
+trend += not na(s200) and close > s200 ? 15 : 0
+trend += not na(s50) and not na(s200) and s50 > s200 ? 15 : 0
+trend += rising200 ? 10 : 0
+trend += not na(adxV) ? clamp(adxV, 0, 50) / 50 * 20 : 0
+trend += clamp(15 + distHigh * 0.75, 0, 15)
+trend += not na(perf6m) ? clamp(perf6m, 0, 50) / 50 * 10 : 0
+trend := math.round(trend)
+
+// ─── Unterstützung: jüngstes Swing-Tief unter dem Kurs (letzte ~6 Monate) ─────
+pl = ta.pivotlow(low, 5, 5)
+var plPrice = array.new_float()
+var plBar   = array.new_int()
+if not na(pl)
+    array.push(plPrice, pl)
+    array.push(plBar, bar_index - 5)
+while array.size(plBar) > 0 and array.get(plBar, 0) < bar_index - 126
+    array.shift(plBar)
+    array.shift(plPrice)
+float support = na
+if array.size(plPrice) > 0
+    for i = array.size(plPrice) - 1 to 0
+        if array.get(plPrice, i) < close
+            support := array.get(plPrice, i)
+            break
+
+// ─── Kaufzonen & Empfehlung ───────────────────────────────────────────────────
+z50ok  = not na(s50) and s50 < close
+zSupOk = not na(support) and (na(s50) or math.abs(support - s50) / s50 > 0.02)
+z200ok = not na(s200) and s200 < close
+in50  = z50ok and close >= s50 * 0.98 and close <= s50 * 1.01
+inSup = zSupOk and close >= support * 0.99 and close <= support * 1.01
+in200 = z200ok and close >= s200 * 0.97 and close <= s200 * 1.02
+inZone = in50 or inSup or in200
+
+uptrend = not na(s200) and close > s200 and (na(s50) or s50 > s200)
+rsiNow = na(rsiV) ? 50.0 : rsiV
+
+// 1 = Aufstocken, 2 = Halten, 3 = Abwarten, 4 = Nicht aufstocken
+int action = uptrend and rsiNow <= 35 ? 1 : uptrend and inZone and score >= 25 ? 1 : score >= 25 and rsiNow >= 70 ? 3 : score >= 25 ? 2 : score > -25 ? 3 : 4
+actionText = action == 1 ? "AUFSTOCKEN" : action == 2 ? "Halten" : action == 3 ? "Abwarten" : "Nicht aufstocken"
+actionCol  = action == 1 ? color.new(#22c55e, 0) : action == 2 ? color.new(#22c55e, 40) : action == 3 ? color.new(#eab308, 0) : color.new(#f05252, 0)
+actionHint = action == 1 ? (rsiNow <= 35 ? "Überverkauft im Aufwärtstrend" : "Kurs in Kaufzone") : action == 2 ? "Trend intakt – Rücksetzer abwarten" : action == 3 ? (score >= 25 ? "Überkauft – Rücksetzer abwarten" : "Kein klares Signal") : "Abwärtstrend – nicht verbilligen"
+
+stopRef = not na(support) ? support : not na(s50) ? s50 : close
+stopLoss = math.min(stopRef - atrV, close - 2 * atrV)
+
+// ─── Zeichnen ─────────────────────────────────────────────────────────────────
+plot(showSma ? s50 : na, "SMA 50", color = #fbbf24, linewidth = 2)
+plot(showSma ? s200 : na, "SMA 200", color = #60a5fa, linewidth = 2)
+plotshape(showBuy and action == 1 and action[1] != 1, "Aufstock-Signal", shape.triangleup, location.belowbar, color.new(#22c55e, 0), size = size.small, text = "Kauf")
+
+var box bx50  = na
+var box bxSup = na
+var box bx200 = na
+if barstate.islast
+    box.delete(bx50)
+    box.delete(bxSup)
+    box.delete(bx200)
+    if showZones
+        left = bar_index - 40
+        right = bar_index + 15
+        if z50ok
+            bx50 := box.new(left, s50 * 1.01, right, s50 * 0.98, border_color = color.new(#fbbf24, 50), bgcolor = color.new(#fbbf24, 85), text = "Kaufzone: Rücksetzer an SMA 50", text_color = color.new(#fbbf24, 0), text_size = size.small, text_halign = text.align_right)
+        if zSupOk
+            bxSup := box.new(left, support * 1.01, right, support * 0.99, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, 85), text = "Kaufzone: letztes Swing-Tief", text_color = color.new(#22c55e, 0), text_size = size.small, text_halign = text.align_right)
+        if z200ok
+            bx200 := box.new(left, s200 * 1.02, right, s200 * 0.97, border_color = color.new(#60a5fa, 50), bgcolor = color.new(#60a5fa, 85), text = "Kaufzone: Test der 200-Tage-Linie", text_color = color.new(#60a5fa, 0), text_size = size.small, text_halign = text.align_right)
+
+var table tbl = table.new(position.top_right, 2, 10, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1)
+fmt(v, f) => na(v) ? "–" : str.tostring(v, f)
+sgn(v, f) => na(v) ? "–" : (v > 0 ? "+" : "") + str.tostring(v, f)
+row(r, k, v, c) =>
+    table.cell(tbl, 0, r, k, text_color = color.new(#8f99a8, 0), text_size = size.small, text_halign = text.align_left)
+    table.cell(tbl, 1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
+if barstate.islast and showTable
+    white = color.new(#e8ebf0, 0)
+    row(0, "Trendradar", signalText, signalCol)
+    row(1, "Score", sgn(score, "#") + " / 100", signalCol)
+    row(2, "Empfehlung", actionText, actionCol)
+    row(3, "", actionHint, color.new(#8f99a8, 0))
+    row(4, "RSI 14", fmt(rsiV, "#") + (rsiNow < 30 ? " überverkauft" : rsiNow > 70 ? " überkauft" : ""), rsiNow < 30 ? color.new(#22c55e, 0) : rsiNow > 70 ? color.new(#f05252, 0) : white)
+    row(5, "ADX 14", fmt(adxV, "#") + (not na(adxV) and adxV >= 25 ? " starker Trend" : not na(adxV) and adxV < 20 ? " kein Trend" : ""), white)
+    row(6, "Trendstärke", str.tostring(trend, "#") + " / 100", white)
+    row(7, "Abst. SMA 200", sgn(dist200, "#.#") + " %", not na(dist200) and dist200 >= 0 ? color.new(#22c55e, 0) : color.new(#f05252, 0))
+    row(8, "Perf. 3 M / 12 M", sgn(perf3m, "#") + " % / " + sgn(perf12m, "#") + " %", white)
+    row(9, "Stop-Loss", fmt(stopLoss, "#.##"), color.new(#f05252, 0))
+
+// ─── Alarme (in TradingView: Alarm erstellen → Bedingung „Trendradar“) ────────
+near200 = not na(dist200) and math.abs(dist200) <= band200
+alertcondition(ta.crossunder(rsiV, rsiTh), "RSI unter Schwelle", "{{ticker}}: RSI ist unter die Schwelle gefallen (überverkauft) – Kurs {{close}}")
+alertcondition(near200 and not near200[1], "An der 200-Tage-Linie", "{{ticker}}: Kurs nähert sich der 200-Tage-Linie – Kurs {{close}}")
+alertcondition(action == 1 and action[1] != 1, "Aufstock-Signal", "{{ticker}}: Trendradar meldet AUFSTOCKEN – Kurs {{close}}")
+alertcondition(score >= 25 and score[1] < 25, "Signal wird bullisch", "{{ticker}}: Trendradar-Signal ist bullisch – Kurs {{close}}")
+alertcondition(score <= -25 and score[1] > -25, "Signal wird bärisch", "{{ticker}}: Trendradar-Signal ist bärisch – Kurs {{close}}")
+alertcondition(ta.crossover(s50, s200), "Golden Cross", "{{ticker}}: SMA 50 kreuzt SMA 200 nach oben")
+alertcondition(ta.crossunder(s50, s200), "Death Cross", "{{ticker}}: SMA 50 kreuzt SMA 200 nach unten")

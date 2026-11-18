@@ -11,6 +11,17 @@ import {
   type Time,
 } from "lightweight-charts";
 import { type Candle, rsi, sma } from "@/lib/indicators";
+import type { Analysis } from "@/lib/analysis";
+import { OverlayPrimitive } from "./chartOverlay";
+import { buildOverlay, DEFAULT_LAYERS, type Layers } from "./overlayBuilder";
+
+const LAYER_LABELS: [keyof Layers, string][] = [
+  ["zones", "Unterstützung/Widerstand"],
+  ["buy", "Kaufzonen"],
+  ["fib", "Fibonacci"],
+  ["patterns", "Muster"],
+  ["targets", "Zielzonen"],
+];
 
 const RANGES = [
   { id: "3M", months: 3 },
@@ -21,14 +32,32 @@ const RANGES = [
 ] as const;
 
 function css(name: string) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  // #abc → #aabbcc, damit Alpha-Suffixe (#rrggbbaa) gültig bleiben
+  return /^#[0-9a-f]{3}$/i.test(v) ? "#" + [...v.slice(1)].map((c) => c + c).join("") : v;
 }
 
-export default function StockChart({ candles }: { candles: Candle[] }) {
+export default function StockChart({ candles, analysis }: { candles: Candle[]; analysis?: Analysis }) {
   const el = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [range, setRange] = useState<(typeof RANGES)[number]["id"]>("1J");
   const [theme, setTheme] = useState(0);
+  const overlayRef = useRef<OverlayPrimitive | null>(null);
+  const [layers, setLayers] = useState<Layers>(DEFAULT_LAYERS);
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("chart.layers.v1");
+      if (s) setLayers({ ...DEFAULT_LAYERS, ...JSON.parse(s) });
+    } catch {}
+  }, []);
+  const toggle = (k: keyof Layers) =>
+    setLayers((l) => {
+      const n = { ...l, [k]: !l[k] };
+      try {
+        localStorage.setItem("chart.layers.v1", JSON.stringify(n));
+      } catch {}
+      return n;
+    });
   const lastC = candles[candles.length - 1];
   // Nur neu zeichnen, wenn sich die Daten wirklich ändern (nicht bei jedem Refresh)
   const sig = `${candles.length}|${lastC?.time}|${lastC?.close}|${lastC?.high}|${lastC?.low}`;
@@ -51,7 +80,7 @@ export default function StockChart({ candles }: { candles: Candle[] }) {
       layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: text, fontFamily: "inherit", attributionLogo: false },
       grid: { vertLines: { color: grid }, horzLines: { color: grid } },
       rightPriceScale: { borderColor: grid },
-      timeScale: { borderColor: grid },
+      timeScale: { borderColor: grid, rightOffset: el.current.clientWidth < 600 ? 18 : 48 },
       crosshair: { mode: 0 },
       localization: { locale: "de-DE", priceFormatter: (v: number) => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
     });
@@ -65,6 +94,9 @@ export default function StockChart({ candles }: { candles: Candle[] }) {
       upColor: up, downColor: down, borderUpColor: up, borderDownColor: down, wickUpColor: up, wickDownColor: down,
     });
     cs.setData(candles.map((c) => ({ time: t(c), open: c.open, high: c.high, low: c.low, close: c.close })));
+    const ov = new OverlayPrimitive();
+    cs.attachPrimitive(ov);
+    overlayRef.current = ov;
     chart.addSeries(LineSeries, { color: css("--sma50"), lineWidth: 2, priceLineVisible: false, lastValueVisible: false, title: "SMA 50" })
       .setData(line(sma(closes, 50)));
     chart.addSeries(LineSeries, { color: css("--sma200"), lineWidth: 2, priceLineVisible: false, lastValueVisible: false, title: "SMA 200" })
@@ -83,6 +115,7 @@ export default function StockChart({ candles }: { candles: Candle[] }) {
     return () => {
       chart.remove();
       chartRef.current = null;
+      overlayRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, theme]);
@@ -91,13 +124,21 @@ export default function StockChart({ candles }: { candles: Candle[] }) {
     const chart = chartRef.current;
     if (!chart || !candles.length) return;
     const r = RANGES.find((x) => x.id === range)!;
-    if (!r.months) return chart.timeScale().fitContent();
-    const to = new Date(candles[candles.length - 1].time);
-    const from = new Date(to);
+    const lastIdx = candles.length - 1;
+    // Rechts Platz für Zielzonen lassen (Handy: weniger, damit die Kerzen nicht gequetscht werden)
+    const off = (el.current?.clientWidth ?? 1000) < 600 ? 18 : 48;
+    if (!r.months) return chart.timeScale().setVisibleLogicalRange({ from: 0, to: lastIdx + off });
+    const from = new Date(candles[lastIdx].time);
     from.setMonth(from.getMonth() - r.months);
-    chart.timeScale().setVisibleRange({ from: from.toISOString().slice(0, 10) as Time, to: candles[candles.length - 1].time as Time });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const fromStr = from.toISOString().slice(0, 10);
+    const fromIdx = Math.max(0, candles.findIndex((c) => c.time >= fromStr));
+    chart.timeScale().setVisibleLogicalRange({ from: fromIdx, to: lastIdx + off });
   }, [range, sig, theme]);
+
+  useEffect(() => {
+    if (overlayRef.current && analysis) overlayRef.current.setData(buildOverlay(analysis, candles.length, layers, css("--surface") + "d9"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysis, layers, sig, theme]);
 
   return (
     <div className="chart-wrap">
@@ -115,6 +156,16 @@ export default function StockChart({ candles }: { candles: Candle[] }) {
           ))}
         </div>
       </div>
+      {analysis && (
+        <div className="layers" role="group" aria-label="Einblendungen">
+          {LAYER_LABELS.map(([k, label]) => (
+            <label key={k} className={`chip ${layers[k] ? "on" : ""} chip-${k}`}>
+              <input type="checkbox" checked={layers[k]} onChange={() => toggle(k)} />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
       <div ref={el} className="chart" />
     </div>
   );

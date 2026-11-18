@@ -8,7 +8,8 @@ import {
   rsi,
   sma,
   swingLows,
-} from "./indicators";
+} from "./indicators.ts";
+import { detectPatterns, type Patterns } from "./patterns.ts";
 
 export type Signal = "stark-bullisch" | "bullisch" | "neutral" | "bärisch" | "stark-bärisch";
 export type Action = "aufstocken" | "halten" | "abwarten" | "nicht-aufstocken";
@@ -26,6 +27,8 @@ export type Metrics = {
   distSma200Pct: number | null;
   sma200Rising: boolean | null;
   rsi14: number | null;
+  rsiW: number | null; // Wochen-RSI
+  rsiM: number | null; // Monats-RSI
   macdHist: number | null;
   adx14: number | null;
   atr14: number | null;
@@ -48,7 +51,28 @@ export type Analysis = {
   buyZones: BuyZone[];
   stopLoss: number | null;
   metrics: Metrics;
+  patterns: Patterns;
 };
+
+/** Fasst Tageskerzen zu Wochen- bzw. Monatsschlusskursen zusammen. */
+function periodCloses(candles: Candle[], period: "W" | "M"): number[] {
+  const out: number[] = [];
+  let key = "";
+  for (const c of candles) {
+    let k: string;
+    if (period === "M") k = c.time.slice(0, 7);
+    else {
+      const d = new Date(c.time + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); // Montag der Woche
+      k = d.toISOString().slice(0, 10);
+    }
+    if (k !== key) {
+      out.push(c.close);
+      key = k;
+    } else out[out.length - 1] = c.close;
+  }
+  return out;
+}
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -85,6 +109,8 @@ export function computeMetrics(candles: Candle[]): Metrics {
     distSma200Pct: pctChange(sma200, price),
     sma200Rising: sma200 != null && sma200Prev != null ? sma200 > sma200Prev : null,
     rsi14: last(r),
+    rsiW: last(rsi(periodCloses(candles, "W"), 14)),
+    rsiM: last(rsi(periodCloses(candles, "M"), 14)),
     macdHist: last(m.histogram),
     adx14: last(a),
     atr14: last(t),
@@ -142,9 +168,16 @@ export function analyze(candles: Candle[]): Analysis {
     `3-Monats-Performance positiv (${fmtPct(m.perf3m)})`,
     `3-Monats-Performance negativ (${fmtPct(m.perf3m)})`, 10);
 
+  if (m.distSma200Pct != null && m.distSma200Pct < -20)
+    reasons.push({ text: `Kurs ${fmtPct(m.distSma200Pct)} unter der 200-Tage-Linie – starker Abwärtstrend`, weight: -20 });
+  else if (m.distSma200Pct != null && m.distSma200Pct < -10)
+    reasons.push({ text: `Kurs ${fmtPct(m.distSma200Pct)} unter der 200-Tage-Linie – deutlich geschwächt`, weight: -10 });
+
+  const longUp = m.sma200 != null && m.price > m.sma200;
   if (m.rsi14 != null) {
     if (m.rsi14 >= 70) reasons.push({ text: `RSI ${m.rsi14.toFixed(0)} – überkauft, Rücksetzer wahrscheinlicher`, weight: -5 });
-    else if (m.rsi14 <= 30) reasons.push({ text: `RSI ${m.rsi14.toFixed(0)} – überverkauft, Gegenbewegung möglich`, weight: 5 });
+    else if (m.rsi14 <= 30 && longUp) reasons.push({ text: `RSI ${m.rsi14.toFixed(0)} – überverkauft im Aufwärtstrend, Gegenbewegung wahrscheinlich`, weight: 5 });
+    else if (m.rsi14 <= 30) reasons.push({ text: `RSI ${m.rsi14.toFixed(0)} – überverkauft im Abwärtstrend („fallendes Messer“)`, weight: -5 });
     else if (m.rsi14 >= 50) reasons.push({ text: `RSI ${m.rsi14.toFixed(0)} – im bullischen Bereich`, weight: 10 });
     else reasons.push({ text: `RSI ${m.rsi14.toFixed(0)} – im bärischen Bereich`, weight: -10 });
   }
@@ -162,11 +195,12 @@ export function analyze(candles: Candle[]): Analysis {
   const signal: Signal =
     score >= 60 ? "stark-bullisch" : score >= 25 ? "bullisch" : score > -25 ? "neutral" : score > -60 ? "bärisch" : "stark-bärisch";
 
-  const { action, actionText, buyZones, stopLoss } = buyAdvice(candles, m, score);
-  return { signal, score, reasons, action, actionText, buyZones, stopLoss, metrics: m };
+  const patterns = detectPatterns(candles);
+  const { action, actionText, buyZones, stopLoss } = buyAdvice(candles, m, score, patterns);
+  return { signal, score, reasons, action, actionText, buyZones, stopLoss, metrics: m, patterns };
 }
 
-function buyAdvice(candles: Candle[], m: Metrics, score: number) {
+function buyAdvice(candles: Candle[], m: Metrics, score: number, pat: Patterns) {
   const zones: BuyZone[] = [];
   const atrV = m.atr14 ?? m.price * 0.02;
   const uptrend = m.sma200 != null && m.price > m.sma200 && (m.sma50 == null || m.sma50 > m.sma200);
@@ -184,6 +218,18 @@ function buyAdvice(candles: Candle[], m: Metrics, score: number) {
   if (m.sma200 != null && m.sma200 < m.price) {
     zones.push({ label: "Test der 200-Tage-Linie", from: m.sma200 * 0.97, to: m.sma200 * 1.02, note: "Langfristige Unterstützung – bricht sie, Trendwechsel prüfen" });
   }
+  const sup = pat.support;
+  if (sup && Math.abs(sup.mid / m.price - 1) < 0.3 && !zones.some((z) => sup.lo <= z.to && sup.hi >= z.from)) {
+    zones.push({ label: `Nächste Unterstützung (${sup.touches}× getestet)`, from: sup.lo, to: sup.hi, note: "Zone, an der der Kurs mehrfach gedreht hat" });
+  }
+  if (pat.fib?.up) {
+    const [gLo, gHi] = pat.fib.gp;
+    if (gHi < m.price * 1.01 && gLo > m.price * 0.75 && !zones.some((z) => gLo <= z.to && gHi >= z.from))
+      zones.push({ label: "Fibonacci Golden Pocket (61,8–65 %)", from: gLo, to: gHi, note: "Klassische Rücksetzer-Zone im Aufwärtsswing" });
+  }
+  if (pat.prz?.bull && pat.prz.hi < m.price * 1.01) {
+    zones.push({ label: `PRZ entstehendes ${pat.prz.name}`, from: pat.prz.lo, to: pat.prz.hi, note: "Harmonische Umkehrzone – Reaktion abwarten" });
+  }
   zones.sort((a, b) => b.to - a.to);
 
   const stopRef = support ?? m.sma50 ?? m.price;
@@ -200,6 +246,10 @@ function buyAdvice(candles: Candle[], m: Metrics, score: number) {
   } else if (uptrend && inZone && score >= 25) {
     action = "aufstocken";
     actionText = "Kurs befindet sich in einer Nachkaufzone eines intakten Aufwärtstrends.";
+  } else if (!uptrend && rsiV <= 30) {
+    action = score <= -25 ? "nicht-aufstocken" : "abwarten";
+    actionText = "Überverkauft, aber im Abwärtstrend („fallendes Messer“). Nicht blind nachkaufen – erst Bodenbildung abwarten (z. B. Doppelboden, Rückeroberung der 50-Tage-Linie)" +
+      (m.sma200 != null ? `; Trendwende erst über der 200-Tage-Linie (${m.sma200.toFixed(2)}).` : ".");
   } else if (score >= 25 && rsiV >= 70) {
     action = "abwarten";
     actionText = "Trend positiv, aber kurzfristig überkauft. Rücksetzer in eine der Kaufzonen abwarten statt hinterherzulaufen.";
@@ -218,7 +268,7 @@ function buyAdvice(candles: Candle[], m: Metrics, score: number) {
       : "Abwärtstrend – nicht verbilligen. Bodenbildung abwarten.";
   }
 
-  return { action, actionText, buyZones: zones.slice(0, 3), stopLoss: stopLoss > 0 ? stopLoss : null };
+  return { action, actionText, buyZones: zones.slice(0, 4), stopLoss: stopLoss > 0 ? stopLoss : null };
 }
 
 function fmtPct(v: number | null) {

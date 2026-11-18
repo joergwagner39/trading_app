@@ -42,9 +42,15 @@ export default function WatchlistPage() {
       {(oversold.length > 0 || near200.length > 0) && (
         <section className="alerts" aria-label="Hinweise">
           {oversold.map((r) => (
-            <Link key={`o-${r.symbol}`} href={`/stock/${encodeURIComponent(r.symbol)}`} className="alert up">
-              <b>{r.symbol}</b> ist überverkauft (RSI {r.metrics.rsi14!.toFixed(0)}) – Nachkauf prüfen
-            </Link>
+            (r.metrics.distSma200Pct ?? -1) > 0 ? (
+              <Link key={`o-${r.symbol}`} href={`/stock/${encodeURIComponent(r.symbol)}`} className="alert up">
+                <b>{r.symbol}</b> überverkauft im Aufwärtstrend (RSI {r.metrics.rsi14!.toFixed(0)}) – Nachkauf prüfen
+              </Link>
+            ) : (
+              <Link key={`o-${r.symbol}`} href={`/stock/${encodeURIComponent(r.symbol)}`} className="alert warn">
+                <b>{r.symbol}</b> überverkauft im Abwärtstrend (RSI {r.metrics.rsi14!.toFixed(0)}) – fallendes Messer, Bodenbildung abwarten
+              </Link>
+            )
           ))}
           {near200.map((r) => (
             <Link key={`s-${r.symbol}`} href={`/stock/${encodeURIComponent(r.symbol)}`} className="alert">

@@ -54,7 +54,7 @@ export default function StockPage({ params }: { params: Promise<{ symbol: string
           <button role="tab" aria-selected={view === "analyse"} className={view === "analyse" ? "on" : ""} onClick={() => setView("analyse")}>Analyse-Chart</button>
           <button role="tab" aria-selected={view === "tv"} className={view === "tv" ? "on" : ""} onClick={() => setView("tv")}>TradingView live</button>
         </div>
-        {view === "analyse" ? <StockChart candles={data.candles} /> : <TradingViewChart symbol={data.symbol} />}
+        {view === "analyse" ? <StockChart candles={data.candles} analysis={a} /> : <TradingViewChart symbol={data.symbol} />}
       </section>
 
       <div className="grid2">
@@ -116,13 +116,14 @@ export default function StockPage({ params }: { params: Promise<{ symbol: string
         </section>
       </div>
 
+      <PatternCard a={a} candles={data.candles} currency={cur} />
+
       <section className="card">
         <h2>Kennzahlen</h2>
         <dl className="kpis">
           <Kpi label="SMA 50" value={fmtNum(m.sma50)} />
           <Kpi label="SMA 200" value={fmtNum(m.sma200)} sub={fmtPct(m.distSma200Pct)} />
-          <Kpi label="RSI 14" value={fmtNum(m.rsi14, 0)} sub={m.rsi14 == null ? "" : m.rsi14 < 30 ? "überverkauft" : m.rsi14 > 70 ? "überkauft" : "neutral"} />
-          <Kpi label="ADX 14" value={fmtNum(m.adx14, 0)} sub={m.adx14 == null ? "" : m.adx14 >= 25 ? "starker Trend" : m.adx14 < 20 ? "kein Trend" : "mäßig"} />
+          <Kpi label="RSI Tag · Woche · Monat" value={`${fmtNum(m.rsi14, 0)} · ${fmtNum(m.rsiW, 0)} · ${fmtNum(m.rsiM, 0)}`} sub={m.rsi14 == null ? "" : m.rsi14 < 30 ? "Tag überverkauft" : m.rsi14 > 70 ? "Tag überkauft" : ""} />
           <Kpi label="Trendstärke" value={`${m.trendScore}/100`} />
           <Kpi label="52W-Hoch" value={fmtNum(m.high52w)} sub={fmtPct(m.distHigh52wPct)} />
           <Kpi label="1 Monat" value={fmtPct(m.perf1m)} />
@@ -166,3 +167,75 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
     </div>
   );
 }
+
+function PatternCard({ a, candles, currency }: { a: Analysis; candles: Detail["candles"]; currency: string }) {
+  const p = a.patterns;
+  const price = a.metrics.price;
+  const day = (i: number) => (candles[i] ? new Date(candles[i].time).toLocaleDateString("de-DE") : "");
+  const dist = (v: number) => fmtPct((v / price - 1) * 100);
+  const zone = (z: typeof p.support) =>
+    z ? `${fmtNum(z.lo)} – ${fmtNum(z.hi)} · ${z.touches}× getestet · ${dist(z.mid)}` : "–";
+  const nearestFib = p.fib
+    ? [...p.fib.levels].filter((l) => l.r > 0 && l.r < 1).sort((x, y) => Math.abs(x.p - price) - Math.abs(y.p - price))[0]
+    : null;
+  return (
+    <section className="card">
+      <h2>Muster, Zonen &amp; Ziele</h2>
+      <div className="grid2 inner">
+        <dl className="facts">
+          <dt>Nächste Unterstützung</dt>
+          <dd className="pos">{zone(p.support)}</dd>
+          <dt>Nächster Widerstand</dt>
+          <dd className="neg">{zone(p.resistance)}</dd>
+          <dt>Fibonacci ({p.fib ? (p.fib.up ? "Aufwärtsswing" : "Abwärtsswing") : "–"})</dt>
+          <dd>
+            {p.fib ? (
+              <>
+                Golden Pocket {fmtNum(p.fib.gp[0])} – {fmtNum(p.fib.gp[1])}
+                {nearestFib && <> · nächstes Level {(nearestFib.r * 100).toFixed(1).replace(".", ",")} % bei {fmtNum(nearestFib.p)} ({dist(nearestFib.p)})</>}
+              </>
+            ) : "–"}
+          </dd>
+          <dt>Zielzonen</dt>
+          <dd>
+            {p.targets.length === 0 ? "–" : (
+              <ol className="targets">
+                {p.targets.map((t, k) => (
+                  <li key={k} className={t.strong ? "strong" : ""}>
+                    <b>Ziel {k + 1}{t.strong ? " ★" : ""}: {fmtPrice(t.mid, currency)}</b> ({fmtPct(t.distPct)})
+                    <small className="muted"> {t.sources.join(" + ")}</small>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </dd>
+        </dl>
+        <div>
+          <h3 style={{ marginTop: 0 }}>Erkannte Muster</h3>
+          {p.harmonics.length === 0 && p.formations.length === 0 && !p.prz && <p className="muted">Aktuell kein Muster erkannt.</p>}
+          <ul className="patterns">
+            {p.prz && (
+              <li className={p.prz.bull ? "up" : "down"}>
+                <b>Entstehendes {p.prz.name} {p.prz.bull ? "▲" : "▼"}</b>
+                <small>Umkehrzone (PRZ) {fmtNum(p.prz.lo)} – {fmtNum(p.prz.hi)} ({dist((p.prz.lo + p.prz.hi) / 2)})</small>
+              </li>
+            )}
+            {[...p.harmonics].reverse().map((h, k) => (
+              <li key={`h${k}`} className={h.bull ? "up" : "down"}>
+                <b>{h.name} {h.bull ? "bullisch ▲" : "bärisch ▼"}</b>
+                <small>Punkt D am {day(h.pts[4].i)} · Ziel 1 {fmtNum(h.t1)} · Ziel 2 {fmtNum(h.t2)} · Stop {fmtNum(h.stop)}</small>
+              </li>
+            ))}
+            {[...p.formations].reverse().map((f, k) => (
+              <li key={`f${k}`} className={f.bull === true ? "up" : f.bull === false ? "down" : "flat"}>
+                <b>{f.name}</b>
+                <small>{f.status} · erkannt am {day(Math.min(f.idx, candles.length - 1))}{f.target != null ? ` · Kursziel ${fmtNum(f.target)}` : ""}</small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+

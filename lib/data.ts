@@ -185,18 +185,22 @@ function demoHistory(symbol: string, years: number): History {
   const phases = Array.from({ length: 5 }, () => (r() - 0.45) * 0.004);
   const vol = 0.01 + r() * 0.02;
   const candles: Candle[] = [];
+  // Handelstage rückwärts ab gestern sammeln, damit die Demo-Daten bis heute reichen
+  const dates: string[] = [];
   const d = new Date();
-  d.setDate(d.getDate() - Math.round(days * 1.45));
-  while (candles.length < days) {
-    d.setDate(d.getDate() + 1);
-    if (d.getDay() === 0 || d.getDay() === 6) continue;
+  while (dates.length < days) {
+    d.setDate(d.getDate() - 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) dates.push(toDay(d));
+  }
+  dates.reverse();
+  for (const day of dates) {
     const drift = phases[Math.floor((candles.length / days) * phases.length)];
     const ret = drift + (r() + r() + r() - 1.5) * vol * 1.4;
     const open = price;
     const close = Math.max(1, price * (1 + ret));
     const high = Math.max(open, close) * (1 + r() * vol);
     const low = Math.min(open, close) * (1 - r() * vol);
-    candles.push({ time: toDay(d), open, high, low, close, volume: Math.round(1e5 + r() * 5e6) });
+    candles.push({ time: day, open, high, low, close, volume: Math.round(1e5 + r() * 5e6) });
     price = close;
   }
   return { symbol, name: demoName(symbol), currency: symbol.endsWith(".DE") ? "EUR" : "USD", exchange: "DEMO", type: isKnownEtf(symbol) ? "ETF" : "EQUITY", candles, demo: true };

@@ -1,136 +1,164 @@
 "use client";
 import Link from "next/link";
-import { useWatchlist } from "@/lib/watchlist";
 import { useJson } from "@/lib/useJson";
-import type { ScanResult } from "@/lib/scan";
-import ScanTable from "@/components/ScanTable";
-import { fmtPct } from "@/lib/format";
+import { useWatchlist } from "@/lib/watchlist";
+import type { Briefing, Earning, Move } from "@/lib/briefing";
+import { fmtNum, fmtPct } from "@/lib/format";
 import DemoNote from "@/components/DemoNote";
-import SearchBox from "@/components/SearchBox";
-import { useEffect, useState } from "react";
 
-export default function WatchlistPage() {
+const longDate = (iso: string) =>
+  new Date(iso + "T12:00:00Z").toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+const shortDate = (iso: string) =>
+  new Date(iso + "T12:00:00Z").toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "UTC" });
+const tone = (v: number | null | undefined) => (v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
+const href = (s: string) => `/stock/${encodeURIComponent(s)}`;
+
+export default function BriefingPage() {
   const wl = useWatchlist();
-  const [toast, setToast] = useState("");
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(""), 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
-  const url = wl.list.length ? `/api/scan?symbols=${encodeURIComponent(wl.list.join(","))}` : null;
-  const { data, error, loading } = useJson<ScanResult>(url, 60_000);
-  const rows = (data?.rows ?? []).filter((r) => wl.list.includes(r.symbol));
-  const pending = wl.list.filter((s) => !rows.some((r) => r.symbol === s) && !(data?.failed ?? []).includes(s));
-
-  const oversold = rows.filter((r) => r.metrics.rsi14 != null && r.metrics.rsi14 < 30);
-  const near200 = rows.filter((r) => r.metrics.distSma200Pct != null && Math.abs(r.metrics.distSma200Pct) <= 3);
-  const bull = rows.filter((r) => r.signal.includes("bullisch")).length;
-  const bear = rows.filter((r) => r.signal.includes("bärisch")).length;
+  const q = encodeURIComponent(wl.list.join(","));
+  const { data, error, loading } = useJson<Briefing>(`/api/briefing?symbols=${q}`, 5 * 60_000);
+  const earn = useJson<{ items: Earning[]; demo: boolean }>(`/api/earnings?symbols=${q}`);
 
   return (
     <>
       <div className="page-head">
         <div>
-          <h1>Watchlist</h1>
-          <p className="muted">{wl.list.length} Werte · gespeichert auf diesem Gerät</p>
+          <h1>Marktbriefing</h1>
+          <p className="muted">
+            {data?.reportDate ? <>Rückblick auf {longDate(data.reportDate)}</> : "Was an den Märkten passiert ist"} · Quartalszahlen heute und in den nächsten Tagen
+          </p>
         </div>
-        <ImportExport />
       </div>
-
-      <div className="add-row">
-        <SearchBox
-          mode="add"
-          placeholder="➕ Aktie hinzufügen – Name oder Symbol eingeben (z. B. Rheinmetall, Apple)…"
-          onAdded={(h) => setToast(`${h.name || h.symbol} (${h.symbol}) zur Watchlist hinzugefügt`)}
-        />
-        {toast && <span className="toast" role="status">✓ {toast}</span>}
-      </div>
-      {pending.length > 0 && <p className="muted small">Lade Daten für: {pending.join(", ")}…</p>}
-
       {data?.demo && <DemoNote />}
+      {error && <p className="error">Briefing konnte nicht geladen werden: {error}</p>}
+      {loading && !data && <p className="muted loading">Erstelle Briefing… (beim ersten Aufruf bis zu 30 Sek.)</p>}
 
-      {rows.length > 0 && (
-        <div className="tiles">
-          <div className="tile"><small>Bullisch</small><b className="pos">{bull}</b></div>
-          <div className="tile"><small>Bärisch</small><b className="neg">{bear}</b></div>
-          <div className="tile"><small>RSI unter 30</small><b>{oversold.length}</b></div>
-          <div className="tile"><small>An der 200-Tage-Linie</small><b>{near200.length}</b></div>
-        </div>
-      )}
+      {data && (
+        <>
+          <section className="card briefing-text">
+            <h2>Kurz zusammengefasst</h2>
+            {data.text.map((t, i) => (
+              <p key={i}>{t}</p>
+            ))}
+            <p className="muted small">Stand {new Date(data.at).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr · automatisch aus Kursdaten erstellt</p>
+          </section>
 
-      {(oversold.length > 0 || near200.length > 0) && (
-        <section className="alerts" aria-label="Hinweise">
-          {oversold.map((r) => (
-            (r.metrics.distSma200Pct ?? -1) > 0 ? (
-              <Link key={`o-${r.symbol}`} href={`/stock/${encodeURIComponent(r.symbol)}`} className="alert up">
-                <b>{r.symbol}</b> überverkauft im Aufwärtstrend (RSI {r.metrics.rsi14!.toFixed(0)}) – Nachkauf prüfen
+          <div className="markets">
+            {data.markets.map((m) => (
+              <Link key={m.symbol} href={href(m.symbol)} className="tile market">
+                <small>{m.name}</small>
+                <b>{fmtNum(m.close, m.close < 10 ? 4 : m.close > 1000 ? 0 : 2)}</b>
+                <span className={tone(m.changePct)}>{fmtPct(m.changePct, 2)}</span>
+                {m.todayPct != null && <em className={tone(m.todayPct)}>heute {fmtPct(m.todayPct, 2)}</em>}
               </Link>
-            ) : (
-              <Link key={`o-${r.symbol}`} href={`/stock/${encodeURIComponent(r.symbol)}`} className="alert warn">
-                <b>{r.symbol}</b> überverkauft im Abwärtstrend (RSI {r.metrics.rsi14!.toFixed(0)}) – fallendes Messer, Bodenbildung abwarten
-              </Link>
-            )
-          ))}
-          {near200.map((r) => (
-            <Link key={`s-${r.symbol}`} href={`/stock/${encodeURIComponent(r.symbol)}`} className="alert">
-              <b>{r.symbol}</b> notiert an der 200-Tage-Linie ({fmtPct(r.metrics.distSma200Pct)})
-            </Link>
-          ))}
-        </section>
+            ))}
+          </div>
+        </>
       )}
 
-      {error && <p className="error">Fehler beim Laden: {error}</p>}
-      {loading && !data && <p className="muted loading">Lade Kurse…</p>}
-      {wl.list.length === 0 ? (
-        <div className="empty-state">
-          <p>Deine Watchlist ist leer.</p>
-          <p className="muted">Gib oben im Feld „Aktie hinzufügen“ einen Namen ein oder füge Werte im <Link href="/screener">Screener</Link> mit ☆ hinzu.</p>
+      <section className="card">
+        <div className="card-head">
+          <h2>Quartalszahlen</h2>
+          <span className="muted small">gestern bis in 7 Tagen · DAX, Europa, USA + Watchlist</span>
         </div>
-      ) : (
-        data && (
-          <ScanTable
-            rows={rows}
-            cols={["price", "change", "signal", "trend", "rsi", "dist200", "perf3m", "perf12m"]}
-            initialSort={{ col: "signal", dir: -1 }}
-            removable
-          />
-        )
-      )}
-      {data && data.failed.filter((s) => wl.list.includes(s)).length > 0 && (
-        <p className="muted small">
-          Keine Daten für: {data.failed.join(", ")}.{" "}
-          {data.failed.map((s) => (
-            <button key={s} className="linkbtn" onClick={() => wl.remove(s)}>{s} entfernen</button>
-          ))}
-        </p>
+        {earn.loading && !earn.data && <p className="muted">Lade Termine… (beim ersten Aufruf bis zu 30 Sek.)</p>}
+        {earn.error && <p className="muted">Termine konnten nicht geladen werden.</p>}
+        {earn.data && earn.data.items.length === 0 && <p className="muted">Keine Quartalszahlen im Zeitraum gefunden.</p>}
+        {earn.data && earn.data.items.length > 0 && <EarningsList items={earn.data.items} today={data?.today ?? new Date().toISOString().slice(0, 10)} />}
+      </section>
+
+      {data && (
+        <>
+          <div className="grid2">
+            <MoveList title="Größte Gewinner" items={data.gainers} />
+            <MoveList title="Größte Verlierer" items={data.losers} />
+          </div>
+          <div className="grid2" style={{ marginTop: 16 }}>
+            <SectorBars title="Sektoren USA" items={data.sectorsUs} />
+            <SectorBars title="Sektoren Europa" items={data.sectorsEu} />
+          </div>
+          {data.watchlist.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <MoveList title="Deine Watchlist" items={data.watchlist} more={<Link href="/watchlist">Zur Watchlist →</Link>} />
+            </div>
+          )}
+        </>
       )}
     </>
   );
 }
 
-function ImportExport() {
-  const wl = useWatchlist();
+function EarningsList({ items, today }: { items: Earning[]; today: string }) {
+  const days = Array.from(new Set(items.map((i) => i.date)));
   return (
-    <div className="row-actions">
-      <button
-        className="btn ghost"
-        onClick={() => {
-          const text = wl.list.join(", ");
-          navigator.clipboard?.writeText(text).catch(() => {});
-          alert(`Watchlist kopiert:\n\n${text}\n\nAuf einem anderen Gerät über „Importieren“ einfügen.`);
-        }}
-      >
-        Exportieren
-      </button>
-      <button
-        className="btn ghost"
-        onClick={() => {
-          const v = prompt("Symbole einfügen (durch Komma getrennt), z. B. SAP.DE, AAPL, NVDA:", wl.list.join(", "));
-          if (v != null) wl.replace(v.split(/[\s,;]+/));
-        }}
-      >
-        Importieren
-      </button>
+    <div className="earnings">
+      {days.map((d) => (
+        <div key={d} className={`eday ${d === today ? "today" : ""}`}>
+          <h3>{d === today ? "Heute" : d < today ? "Gestern" : shortDate(d)}</h3>
+          <ul>
+            {items.filter((i) => i.date === d).map((i) => (
+              <li key={i.symbol} className={i.inWatchlist ? "wl" : ""}>
+                <Link href={href(i.symbol)}>
+                  <b>{i.symbol}</b> <span>{i.name}</span>
+                </Link>
+                <small className="muted">
+                  {i.inWatchlist && "★ Watchlist · "}
+                  {i.sector !== "Sonstige" ? i.sector : ""}
+                  {i.epsAvg != null ? ` · erw. EPS ${fmtNum(i.epsAvg)}` : ""}
+                  {i.estimate ? " · Termin geschätzt" : ""}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
+  );
+}
+
+function MoveList({ title, items, more }: { title: string; items: Move[]; more?: React.ReactNode }) {
+  return (
+    <section className="card" style={{ marginBottom: 0 }}>
+      <div className="card-head">
+        <h2>{title}</h2>
+        {more}
+      </div>
+      <ul className="moves">
+        {items.map((m) => (
+          <li key={m.symbol}>
+            <Link href={href(m.symbol)}>
+              <b>{m.symbol}</b>
+              <span>{m.name}</span>
+            </Link>
+            <span className="muted small">{fmtNum(m.close)}</span>
+            <span className={`num ${tone(m.changePct)}`}>{fmtPct(m.changePct, 2)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function SectorBars({ title, items }: { title: string; items: Move[] }) {
+  const max = Math.max(...items.map((i) => Math.abs(i.changePct ?? 0)), 0.5);
+  return (
+    <section className="card" style={{ marginBottom: 0 }}>
+      <h2>{title}</h2>
+      <ul className="sbars">
+        {items.map((s) => {
+          const v = s.changePct ?? 0;
+          return (
+            <li key={s.symbol}>
+              <Link href={href(s.symbol)} title={s.symbol}>{s.name}</Link>
+              <span className="sbar">
+                <span className="zero" />
+                <i className={v >= 0 ? "up" : "down"} style={{ width: `${(Math.abs(v) / max) * 50}%`, [v >= 0 ? "left" : "right"]: "50%" }} />
+              </span>
+              <span className={`num ${tone(s.changePct)}`}>{fmtPct(s.changePct, 1)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

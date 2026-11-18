@@ -270,6 +270,46 @@ table.scan { width: 100%; border-collapse: collapse; }
 .hbar i { display: block; height: 6px; border-radius: 3px; background: var(--accent); }
 .hbar small { color: var(--text-2); white-space: nowrap; }
 
+/* ---- Briefing ---- */
+.briefing-text p { font-size: 1rem; line-height: 1.6; }
+.markets { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.tile.market { display: flex; flex-direction: column; gap: 2px; }
+.tile.market b { font-size: 1.15rem; }
+.tile.market span { font-weight: 600; }
+.tile.market em { font-style: normal; font-size: 0.78rem; }
+.tile.market:hover { border-color: var(--accent); }
+.earnings { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.eday { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
+.eday.today { outline: 2px solid var(--accent); }
+.eday h3 { margin: 0 0 6px; }
+.eday ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.eday li { display: flex; flex-direction: column; }
+.eday li.wl b { color: #d97706; }
+.eday li a span { color: var(--text-2); font-size: 0.88rem; }
+.moves { list-style: none; margin: 0; padding: 0; }
+.moves li { display: grid; grid-template-columns: minmax(0, 1fr) auto 80px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.moves li:last-child { border-bottom: 0; }
+.moves a { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.moves a span { color: var(--text-2); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.moves .num { text-align: right; font-weight: 600; }
+.sbars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sbars li { display: grid; grid-template-columns: minmax(0, 1.3fr) 1fr 64px; gap: 10px; align-items: center; font-size: 0.88rem; }
+.sbars a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbar { position: relative; height: 10px; }
+.sbar .zero { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border); }
+.sbar i { position: absolute; top: 0; height: 100%; border-radius: 3px; }
+.sbar i.up { background: var(--up); }
+.sbar i.down { background: var(--down); }
+.sbars .num { text-align: right; font-weight: 600; }
+.ntags { display: flex; gap: 6px; padding: 0 0 10px; flex-wrap: wrap; }
+.ntag { font-size: 0.72rem; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.ntag.sym { color: var(--accent); }
+.news .ntags { flex-direction: row; align-items: center; }
+.news .ntags .ntag { display: inline-block; padding: 1px 8px; }
+.news .ntags a.ntag:hover { text-decoration: underline; }
+button.chip { background: none; font: inherit; font-size: 0.8rem; }
+button.chip::before { display: none; }
+
 /* ---- Mobile ---- */
 @media (max-width: 860px) {
   .grid2 { grid-template-columns: 1fr; }

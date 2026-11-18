@@ -4,8 +4,10 @@ import { usePathname } from "next/navigation";
 import SearchBox from "./SearchBox";
 
 const LINKS = [
-  { href: "/", label: "Watchlist", icon: "★" },
+  { href: "/", label: "Briefing", icon: "☀" },
+  { href: "/watchlist", label: "Watchlist", icon: "★" },
   { href: "/screener", label: "Screener", icon: "⚲" },
+  { href: "/news", label: "News", icon: "▤" },
 ];
 
 export default function Nav() {

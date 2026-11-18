@@ -71,6 +71,11 @@ Zusätzlich:
 - **Chartformationen**: Doppelboden/-top, Schulter-Kopf-Schulter (auch invers) mit Nackenlinien-Ausbruch
 - **Kerzenmuster**: Engulfing, Hammer, Shooting Star (nur an relevanten Stellen)
 - **Fibonacci**: Retracements des letzten großen Swings, Golden Pocket, Extensions 127,2/161,8 %
+- **Dreiecke, Keile, Kanäle, Rechtecke** mit Ausbruchserkennung und Kursziel
+- **Unterstützungs-/Widerstandszonen** aus gebündelten Wendepunkten (mit Anzahl Berührungen),
+  nächste Unterstützung und nächster Widerstand in der Tabelle
+- **Zielzonen** Ziel 1–3: Widerstände, Fib-Extensions und Musterziele kombiniert;
+  ★ = mehrere Ziele auf einem Niveau (Konfluenz)
 
 1. In TradingView einen Chart öffnen (Zeitraum **1D**), unten **Pine-Editor** öffnen.
 2. Inhalt der Datei einfügen → **Zum Chart hinzufügen**, danach **Speichern**.

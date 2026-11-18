@@ -163,6 +163,14 @@ inR(float v, float lo, float hi) => v >= lo * (1 - tol) and v <= hi * (1 + tol)
 var string patText = ""
 var color  patCol  = color.gray
 var int    patBar  = na
+var float  hT1 = na
+var float  hT2 = na
+var bool   hBull = false
+var int    hBar = na
+var float  dbTarget = na
+var int    dbTBar = na
+var float  ihsTarget = na
+var int    ihsTBar = na
 bool harmBullNew = false
 bool harmBearNew = false
 
@@ -226,6 +234,10 @@ if newPoint and array.size(zzP) >= 5
         patBar := dB
         harmBullNew := bull
         harmBearNew := not bull
+        hT1 := t1
+        hT2 := t2
+        hBull := bull
+        hBar := dB
 
 // ─── Entstehende harmonische Muster: PRZ (Zone, in der D erwartet wird) ──────
 var box   przBox  = na
@@ -300,6 +312,8 @@ if newPoint and showChartP and array.size(zzP) >= 3
         label.new(b3, p3, "Doppelboden", style = label.style_label_up, color = color.new(#22c55e, 20), textcolor = color.white, size = size.small)
         dbNeck := p2
         dbBar := bar_index
+        dbTarget := p2 + (p2 - math.min(p1, p3))
+        dbTBar := bar_index
         patText := "Doppelboden (Nackenlinie " + str.tostring(p2, format.mintick) + ")"
         patCol := green
         patBar := b3
@@ -339,6 +353,10 @@ if newPoint and showChartP and array.size(zzP) >= 3
             hsB2 := nB2
             hsDir := isTop ? 1 : -1
             hsBar := bar_index
+            if not isTop
+                neckMid = (n1 + n2) / 2
+                ihsTarget := neckMid + (neckMid - hd)
+                ihsTBar := bar_index
             patText := isTop ? "Schulter-Kopf-Schulter" : "Inverse SKS"
             patCol := col
             patBar := sB2
@@ -435,6 +453,340 @@ nearestFib() =>
             res := str.tostring(r * 100, "#.#") + " % (" + str.tostring(p, format.mintick) + ", " + str.tostring(dst, "#.#") + " % entfernt)"
     res
 
+// ─── Dreiecke, Keile, Kanäle, Rechtecke (Trendlinien aus dem Zickzack) ───────
+showTri = input.bool(true, "Dreiecke, Keile, Kanäle, Rechtecke", group = grpP)
+
+var line   triU = na
+var line   triL = na
+var label  triLbl = na
+var bool   triActive = false
+var string triName = ""
+var int    triBias = 0 // 1 = bullisch, -1 = bärisch, 0 = neutral
+var int    tB0 = na
+var float  tU0 = na
+var float  tL0 = na
+var float  tsU = na
+var float  tsL = na
+var float  triHeight = na
+var float  triTarget = na
+var int    triTBar = na
+
+if newPoint and showTri and array.size(zzP) >= 4
+    n = array.size(zzP)
+    float h1 = na
+    float h2 = na
+    float l1 = na
+    float l2 = na
+    int bh1 = na
+    int bh2 = na
+    int bl1 = na
+    int bl2 = na
+    for k = n - 4 to n - 1
+        if array.get(zzH, k)
+            h1 := h2
+            bh1 := bh2
+            h2 := array.get(zzP, k)
+            bh2 := array.get(zzB, k)
+        else
+            l1 := l2
+            bl1 := bl2
+            l2 := array.get(zzP, k)
+            bl2 := array.get(zzB, k)
+    if not na(h1) and not na(l1) and bh2 != bh1 and bl2 != bl1
+        sH = (h2 - h1) / (bh2 - bh1)
+        sL = (l2 - l1) / (bl2 - bl1)
+        start = math.min(bh1, bl1)
+        span = bar_index - start
+        upStart = h1 + sH * (start - bh1)
+        loStart = l1 + sL * (start - bl1)
+        upNow = h2 + sH * (bar_index - bh2)
+        loNow = l2 + sL * (bar_index - bl2)
+        wStart = upStart - loStart
+        wNow = upNow - loNow
+        thr = 0.75 * atrV
+        dh = sH * span
+        dl = sL * span
+        flatH = math.abs(dh) <= thr
+        flatL = math.abs(dl) <= thr
+        upH = dh > thr
+        upL = dl > thr
+        dnH = dh < -thr
+        dnL = dl < -thr
+        converging = dh - dl < -thr
+        parallel = math.abs(dh - dl) <= thr
+        string nm = ""
+        int bias = 0
+        if flatH and upL
+            nm := "Aufsteigendes Dreieck"
+            bias := 1
+        else if dnH and flatL
+            nm := "Absteigendes Dreieck"
+            bias := -1
+        else if dnH and upL
+            nm := "Symmetrisches Dreieck"
+        else if upH and upL and converging
+            nm := "Steigender Keil"
+            bias := -1
+        else if dnH and dnL and converging
+            nm := "Fallender Keil"
+            bias := 1
+        else if upH and upL and parallel
+            nm := "Aufwärtskanal"
+            bias := 1
+        else if dnH and dnL and parallel
+            nm := "Abwärtskanal"
+            bias := -1
+        else if flatH and flatL
+            nm := "Rechteck (Range)"
+        valid = nm != "" and span >= 15 and wStart >= 2 * atrV and wNow > 0.15 * wStart and close <= upNow + 0.25 * atrV and close >= loNow - 0.25 * atrV
+        if valid
+            // nicht ausgebrochene Vorgänger-Formation ersetzen
+            if triActive
+                line.delete(triU)
+                line.delete(triL)
+                label.delete(triLbl)
+            tc = bias > 0 ? green : bias < 0 ? red : color.new(#eab308, 0)
+            triU := line.new(start, upStart, bar_index, upNow, color = tc, width = 2)
+            triL := line.new(start, loStart, bar_index, loNow, color = tc, width = 2)
+            triLbl := label.new(start, upStart, nm, style = label.style_label_down, color = color.new(tc, 20), textcolor = color.white, size = size.small)
+            triActive := true
+            triName := nm
+            triBias := bias
+            tB0 := start
+            tU0 := upStart
+            tL0 := loStart
+            tsU := sH
+            tsL := sL
+            triHeight := wStart
+
+upT = triActive ? tU0 + tsU * (bar_index - tB0) : na
+loT = triActive ? tL0 + tsL * (bar_index - tB0) : na
+triBreakUp = triActive and close > upT
+triBreakDn = triActive and close < loT
+if triActive and not triBreakUp and not triBreakDn
+    line.set_xy2(triU, bar_index, upT)
+    line.set_xy2(triL, bar_index, loT)
+if triBreakUp or triBreakDn
+    triTarget := triBreakUp ? upT + triHeight : loT - triHeight
+    triTBar := bar_index
+    tcol = triBreakUp ? green : red
+    line.new(bar_index, close, bar_index + 25, triTarget, color = color.new(tcol, 30), style = line.style_arrow_right)
+    label.new(bar_index + 25, triTarget, "Ziel " + triName + ": " + str.tostring(triTarget, format.mintick), style = label.style_label_left, color = color.new(tcol, 20), textcolor = color.white, size = size.small)
+    patText := triName + (triBreakUp ? " – Ausbruch ↑" : " – Bruch ↓")
+    patCol := tcol
+    patBar := bar_index
+    triActive := false
+if triActive and (bar_index - tB0 > 300 or upT <= loT)
+    triActive := false
+plotshape(triBreakUp, "Ausbruch Formation", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "↑", textcolor = color.white, size = size.tiny)
+plotshape(triBreakDn, "Bruch Formation", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "↓", textcolor = color.white, size = size.tiny)
+
+// ─── Unterstützungs-/Widerstandszonen ─────────────────────────────────────────
+grpS = "Unterstützung / Widerstand / Ziele"
+showSR   = input.bool(true, "Unterstützungs- und Widerstandszonen", group = grpS)
+srLen    = input.int(8, "Pivot-Länge", minval = 3, maxval = 30, group = grpS)
+srLook   = input.int(400, "Zeitraum (Kerzen zurück)", minval = 50, maxval = 2000, group = grpS)
+srWidth  = input.float(0.6, "Zonenbreite (× ATR)", minval = 0.2, maxval = 3, step = 0.1, group = grpS)
+srMin    = input.int(2, "Mindestanzahl Berührungen", minval = 1, maxval = 6, group = grpS)
+srShowN  = input.int(3, "Zonen je Seite", minval = 1, maxval = 6, group = grpS)
+showTgt  = input.bool(true, "Zielzonen automatisch einzeichnen", group = grpS)
+
+srH = ta.pivothigh(high, srLen, srLen)
+srL = ta.pivotlow(low, srLen, srLen)
+var srP = array.new_float()
+var srB = array.new_int()
+bool srNew = false
+if not na(srH)
+    array.push(srP, srH)
+    array.push(srB, bar_index - srLen)
+    srNew := true
+if not na(srL)
+    array.push(srP, srL)
+    array.push(srB, bar_index - srLen)
+    srNew := true
+while array.size(srB) > 0 and array.get(srB, 0) < bar_index - srLook
+    array.shift(srB)
+    array.shift(srP)
+    srNew := true
+
+// Wendepunkte nach Preis sortieren und nahe beieinander liegende zu Zonen bündeln
+var zLo = array.new_float()
+var zHi = array.new_float()
+var zCnt = array.new_int()
+var zFirst = array.new_int()
+if srNew or barstate.islast
+    array.clear(zLo)
+    array.clear(zHi)
+    array.clear(zCnt)
+    array.clear(zFirst)
+    n = array.size(srP)
+    if n > 0
+        idx = array.sort_indices(srP, order.ascending)
+        w = nz(atrV, close * 0.02) * srWidth
+        float cLo = na
+        float cHi = na
+        int cCnt = 0
+        int cFirst = na
+        for k = 0 to n - 1
+            i = array.get(idx, k)
+            p = array.get(srP, i)
+            pb = array.get(srB, i)
+            if not na(cLo) and p - cLo <= 2 * w
+                cHi := p
+                cCnt += 1
+                cFirst := math.min(cFirst, pb)
+            else
+                if not na(cLo) and cCnt >= srMin
+                    array.push(zLo, cLo - w * 0.25)
+                    array.push(zHi, cHi + w * 0.25)
+                    array.push(zCnt, cCnt)
+                    array.push(zFirst, cFirst)
+                cLo := p
+                cHi := p
+                cCnt := 1
+                cFirst := pb
+        if not na(cLo) and cCnt >= srMin
+            array.push(zLo, cLo - w * 0.25)
+            array.push(zHi, cHi + w * 0.25)
+            array.push(zCnt, cCnt)
+            array.push(zFirst, cFirst)
+
+// Nächste Unterstützung (unter dem Kurs) und nächster Widerstand (darüber)
+float supLo = na
+float supHi = na
+int   supCnt = 0
+float resLo = na
+float resHi = na
+int   resCnt = 0
+if array.size(zLo) > 0
+    for i = 0 to array.size(zLo) - 1
+        lo = array.get(zLo, i)
+        hi = array.get(zHi, i)
+        mid = (lo + hi) / 2
+        if mid <= close and (na(supHi) or hi > supHi)
+            supLo := lo
+            supHi := hi
+            supCnt := array.get(zCnt, i)
+        if mid > close and (na(resLo) or lo < resLo)
+            resLo := lo
+            resHi := hi
+            resCnt := array.get(zCnt, i)
+
+supTouch = not na(supHi) and low <= supHi and close >= supLo
+supTouchNew = supTouch and not supTouch[1]
+resBreak = not na(resHi[1]) and close > resHi[1] and close[1] <= resHi[1]
+supBreak = not na(supLo[1]) and close < supLo[1] and close[1] >= supLo[1]
+
+var srBoxes = array.new_box()
+if barstate.islast
+    for bx in srBoxes
+        box.delete(bx)
+    array.clear(srBoxes)
+    if showSR and array.size(zLo) > 0
+        ord = array.sort_indices(zHi, order.descending)
+        int shown = 0
+        for k = 0 to array.size(ord) - 1
+            i = array.get(ord, k)
+            lo = array.get(zLo, i)
+            hi = array.get(zHi, i)
+            if (lo + hi) / 2 <= close and shown < srShowN
+                tr = shown == 0 ? 70 : 85
+                array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, tr), text = (shown == 0 ? "Nächste Unterstützung · " : "Unterstützung · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = green, text_size = size.small, text_halign = text.align_right))
+                shown += 1
+        shown := 0
+        for k = array.size(ord) - 1 to 0
+            i = array.get(ord, k)
+            lo = array.get(zLo, i)
+            hi = array.get(zHi, i)
+            if (lo + hi) / 2 > close and shown < srShowN
+                tr = shown == 0 ? 70 : 85
+                array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#f05252, 50), bgcolor = color.new(#f05252, tr), text = (shown == 0 ? "Nächster Widerstand · " : "Widerstand · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = red, text_size = size.small, text_halign = text.align_right))
+                shown += 1
+
+// ─── Zielzonen: Widerstände + Fib-Extensions + Musterziele, Überlappungen = Konfluenz
+var tgtBoxes = array.new_box()
+var string tgtText = "–"
+if barstate.islast
+    for bx in tgtBoxes
+        box.delete(bx)
+    array.clear(tgtBoxes)
+    tgtText := "–"
+    if showTgt
+        cLo = array.new_float()
+        cHi = array.new_float()
+        cTx = array.new_string()
+        pad = atrV * 0.25
+        if array.size(zLo) > 0
+            for i = 0 to array.size(zLo) - 1
+                if array.get(zLo, i) > close
+                    array.push(cLo, array.get(zLo, i))
+                    array.push(cHi, array.get(zHi, i))
+                    array.push(cTx, "Widerstand " + str.tostring(array.get(zCnt, i)) + "×")
+        if showFib and fibUp and fHi > fLo
+            for r in array.from(1.272, 1.618)
+                p = fLo + r * (fHi - fLo)
+                array.push(cLo, p - pad)
+                array.push(cHi, p + pad)
+                array.push(cTx, "Fib " + str.tostring(r * 100, "#.#") + " %")
+        if not na(hBar) and hBull and bar_index - hBar <= 60
+            array.push(cLo, hT1 - pad)
+            array.push(cHi, hT1 + pad)
+            array.push(cTx, "Harmonic Ziel 1")
+            array.push(cLo, hT2 - pad)
+            array.push(cHi, hT2 + pad)
+            array.push(cTx, "Harmonic Ziel 2")
+        if not na(dbTBar) and bar_index - dbTBar <= 120
+            array.push(cLo, dbTarget - pad)
+            array.push(cHi, dbTarget + pad)
+            array.push(cTx, "Doppelboden-Ziel")
+        if not na(ihsTBar) and bar_index - ihsTBar <= 120
+            array.push(cLo, ihsTarget - pad)
+            array.push(cHi, ihsTarget + pad)
+            array.push(cTx, "iSKS-Ziel")
+        if not na(triTBar) and bar_index - triTBar <= 120 and triTarget > close
+            array.push(cLo, triTarget - pad)
+            array.push(cHi, triTarget + pad)
+            array.push(cTx, "Formations-Ziel")
+        if triActive and triBias >= 0
+            p = upT + triHeight
+            array.push(cLo, p - pad)
+            array.push(cHi, p + pad)
+            array.push(cTx, triName + " (bei Ausbruch)")
+        mLo = array.new_float()
+        mHi = array.new_float()
+        mTx = array.new_string()
+        mN  = array.new_int()
+        if array.size(cLo) > 0
+            ord = array.sort_indices(cLo, order.ascending)
+            for k = 0 to array.size(ord) - 1
+                i = array.get(ord, k)
+                lo = array.get(cLo, i)
+                hi = array.get(cHi, i)
+                if lo <= close * 1.002
+                    continue
+                m = array.size(mLo)
+                if m > 0 and lo <= array.get(mHi, m - 1)
+                    array.set(mHi, m - 1, math.max(hi, array.get(mHi, m - 1)))
+                    array.set(mTx, m - 1, array.get(mTx, m - 1) + " + " + array.get(cTx, i))
+                    array.set(mN, m - 1, array.get(mN, m - 1) + 1)
+                else
+                    array.push(mLo, lo)
+                    array.push(mHi, hi)
+                    array.push(mTx, array.get(cTx, i))
+                    array.push(mN, 1)
+        cnt = math.min(3, array.size(mLo))
+        if cnt > 0
+            tgtText := ""
+            for k = 0 to cnt - 1
+                lo = array.get(mLo, k)
+                hi = array.get(mHi, k)
+                strong = array.get(mN, k) >= 2
+                tcol = color.new(#38bdf8, 0)
+                array.push(tgtBoxes, box.new(bar_index + 3, hi, bar_index + 45, lo, border_color = color.new(#38bdf8, strong ? 0 : 40), border_width = strong ? 2 : 1, bgcolor = color.new(#38bdf8, strong ? 70 : 85), text = "Ziel " + str.tostring(k + 1) + (strong ? " ★ " : " ") + str.tostring((lo + hi) / 2, format.mintick) + " (" + str.tostring(((lo + hi) / 2 / close - 1) * 100, "#.#") + " %) · " + array.get(mTx, k), text_color = tcol, text_size = size.small, text_halign = text.align_left))
+                tgtText := tgtText + (k > 0 ? " · " : "") + "Z" + str.tostring(k + 1) + " " + str.tostring((lo + hi) / 2, format.mintick) + (strong ? "★" : "")
+
+zoneTxt(lo, hi, c) => na(lo) ? "–" : str.tostring(lo, format.mintick) + "–" + str.tostring(hi, format.mintick) + " (" + str.tostring(c) + "×, " + (((lo + hi) / 2 / close - 1) * 100 > 0 ? "+" : "") + str.tostring(((lo + hi) / 2 / close - 1) * 100, "#.#") + " %)"
+
 // ─── Zeichnen ─────────────────────────────────────────────────────────────────
 plot(showSma ? s50 : na, "SMA 50", color = #fbbf24, linewidth = 2)
 plot(showSma ? s200 : na, "SMA 200", color = #60a5fa, linewidth = 2)
@@ -457,7 +809,7 @@ if barstate.islast
         if z200ok
             bx200 := box.new(left, s200 * 1.02, right, s200 * 0.97, border_color = color.new(#60a5fa, 50), bgcolor = color.new(#60a5fa, 85), text = "Kaufzone: Test der 200-Tage-Linie", text_color = color.new(#60a5fa, 0), text_size = size.small, text_halign = text.align_right)
 
-var table tbl = table.new(position.top_right, 2, 13, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1)
+var table tbl = table.new(position.top_right, 2, 17, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1)
 fmt(v, f) => na(v) ? "–" : str.tostring(v, f)
 sgn(v, f) => na(v) ? "–" : (v > 0 ? "+" : "") + str.tostring(v, f)
 row(r, k, v, c) =>
@@ -477,6 +829,10 @@ if barstate.islast and showTable
     row(10, "Muster", not na(patBar) and bar_index - patBar <= 40 ? patText : "–", not na(patBar) and bar_index - patBar <= 40 ? patCol : white)
     row(11, "PRZ", przName != "" ? przName + " " + str.tostring(przLo, format.mintick) + " – " + str.tostring(przHi, format.mintick) : "–", przBull ? green : red)
     row(12, "Nächstes Fib", showFib ? nearestFib() + (fibUp ? " ↑-Swing" : " ↓-Swing") : "–", color.new(#a78bfa, 0))
+    row(13, "Formation", triActive ? triName + " (aktiv)" : "–", triBias > 0 ? green : triBias < 0 ? red : color.new(#eab308, 0))
+    row(14, "Nächste Unterstützung", zoneTxt(supLo, supHi, supCnt), green)
+    row(15, "Nächster Widerstand", zoneTxt(resLo, resHi, resCnt), red)
+    row(16, "Zielzonen", tgtText, color.new(#38bdf8, 0))
 
 // ─── Alarme (in TradingView: Alarm erstellen → Bedingung „Trendradar“) ────────
 near200 = not na(dist200) and math.abs(dist200) <= band200
@@ -495,3 +851,8 @@ alertcondition(dbBreak or ihsBreak, "Bullischer Formations-Ausbruch", "{{ticker}
 alertcondition(dtBreak or hsBreak, "Bärischer Formations-Bruch", "{{ticker}}: Bruch der Nackenlinie (Doppeltop / SKS) – Kurs {{close}}")
 alertcondition(bullEngulf or hammer, "Bullische Kerze", "{{ticker}}: Bullisches Kerzenmuster (Engulfing/Hammer) an relevanter Stelle – Kurs {{close}}")
 alertcondition(bearEngulf or shootStar, "Bärische Kerze", "{{ticker}}: Bärisches Kerzenmuster (Engulfing/Shooting Star) – Kurs {{close}}")
+alertcondition(supTouchNew, "Unterstützung erreicht", "{{ticker}}: Kurs erreicht die nächste Unterstützungszone – Kurs {{close}}")
+alertcondition(supBreak, "Unterstützung gebrochen", "{{ticker}}: Unterstützungszone nach unten gebrochen – Kurs {{close}}")
+alertcondition(resBreak, "Widerstand überwunden", "{{ticker}}: Ausbruch über die Widerstandszone – Kurs {{close}}")
+alertcondition(triBreakUp, "Formation: Ausbruch nach oben", "{{ticker}}: Ausbruch aus Dreieck/Keil/Kanal nach oben – Kurs {{close}}")
+alertcondition(triBreakDn, "Formation: Bruch nach unten", "{{ticker}}: Bruch aus Dreieck/Keil/Kanal nach unten – Kurs {{close}}")

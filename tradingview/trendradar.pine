@@ -8,6 +8,8 @@ showSma   = input.bool(true, "SMA 50 / 200 anzeigen", group = "Anzeige")
 showZones = input.bool(true, "Kaufzonen anzeigen", group = "Anzeige")
 showTable = input.bool(true, "Analyse-Tabelle anzeigen", group = "Anzeige")
 showBuy   = input.bool(true, "Aufstock-Signale markieren", group = "Anzeige")
+histBars  = input.int(250, "Muster/Signale nur der letzten X Kerzen zeigen", minval = 50, maxval = 5000, group = "Anzeige", tooltip = "Ältere Zeichnungen werden ausgeblendet, damit der Chart übersichtlich bleibt.")
+recent = bar_index >= last_bar_index - histBars
 rsiTh     = input.int(30, "RSI-Schwelle (überverkauft)", minval = 5, maxval = 50, group = "Alarme")
 band200   = input.float(3.0, "Abstand zur 200-Tage-Linie (± %)", minval = 0.5, maxval = 15, step = 0.5, group = "Alarme")
 
@@ -101,7 +103,7 @@ grpP = "Muster"
 showHarm   = input.bool(true, "Harmonische Muster (Gartley, Bat, Butterfly, Crab, Cypher …)", group = grpP)
 showPrz    = input.bool(true, "Entstehende harmonische Muster: Umkehrzone (PRZ) vorab zeigen", group = grpP)
 showChartP = input.bool(true, "Doppelboden/-top, Schulter-Kopf-Schulter", group = grpP)
-showCandle = input.bool(true, "Kerzenmuster (Engulfing, Hammer, Shooting Star)", group = grpP)
+showCandle = input.bool(false, "Kerzenmuster (Engulfing, Hammer, Shooting Star)", group = grpP)
 zzLen      = input.int(5, "Pivot-Länge (Zickzack)", minval = 2, maxval = 30, group = grpP, tooltip = "Größer = nur größere Schwünge. Muster werden erst so viele Kerzen nach dem Wendepunkt bestätigt.")
 tol        = input.float(5.0, "Toleranz Fibonacci-Verhältnisse (%)", minval = 1, maxval = 15, step = 0.5, group = grpP) / 100
 dTol       = input.float(2.0, "Toleranz Doppelboden/-top & Schultern (%)", minval = 0.5, maxval = 8, step = 0.5, group = grpP) / 100
@@ -218,16 +220,16 @@ if newPoint and array.size(zzP) >= 5
             nm := "Cypher"
     if nm != ""
         col = bull ? green : red
-        array.push(hLines, line.new(xB, x, aB, a, color = col, width = 2))
-        array.push(hLines, line.new(aB, a, bB, b, color = col, width = 2))
-        array.push(hLines, line.new(bB, b, cB, c, color = col, width = 2))
-        array.push(hLines, line.new(cB, c, dB, d, color = col, width = 2))
-        array.push(hLines, line.new(xB, x, bB, b, color = col, style = line.style_dashed))
-        array.push(hLines, line.new(bB, b, dB, d, color = col, style = line.style_dashed))
+        array.push(hLines, line.new(xB, x, aB, a, color = col, width = 2, force_overlay = true))
+        array.push(hLines, line.new(aB, a, bB, b, color = col, width = 2, force_overlay = true))
+        array.push(hLines, line.new(bB, b, cB, c, color = col, width = 2, force_overlay = true))
+        array.push(hLines, line.new(cB, c, dB, d, color = col, width = 2, force_overlay = true))
+        array.push(hLines, line.new(xB, x, bB, b, color = col, style = line.style_dashed, force_overlay = true))
+        array.push(hLines, line.new(bB, b, dB, d, color = col, style = line.style_dashed, force_overlay = true))
         t1 = d + 0.382 * (a - d)
         t2 = d + 0.618 * (a - d)
         stopH = math.abs(a - d) / lenXA < 1 ? x : d - math.sign(a - d) * 0.13 * lenXA
-        hLbl := label.new(dB, d, nm + (bull ? " ▲" : " ▼") + "\nZiel 1: " + str.tostring(t1, format.mintick) + "\nZiel 2: " + str.tostring(t2, format.mintick) + "\nStop: " + str.tostring(stopH, format.mintick), style = bull ? label.style_label_up : label.style_label_down, color = col, textcolor = color.white, size = size.small)
+        hLbl := label.new(dB, d, nm + (bull ? " ▲" : " ▼") + "\nZiel 1: " + str.tostring(t1, format.mintick) + "\nZiel 2: " + str.tostring(t2, format.mintick) + "\nStop: " + str.tostring(stopH, format.mintick), style = bull ? label.style_label_up : label.style_label_down, color = col, textcolor = color.white, size = size.small, force_overlay = true)
         hXBar := xB
         patText := nm + (bull ? " bullisch" : " bärisch")
         patCol := col
@@ -281,7 +283,7 @@ if newPoint and array.size(zzP) >= 4
                     break
         if przName != ""
             pc = bullP ? green : red
-            przBox := box.new(cB, przHi, bar_index + 30, przLo, border_color = color.new(pc, 30), border_style = line.style_dashed, bgcolor = color.new(pc, 88), text = "Entstehendes " + przName + (bullP ? " ▲" : " ▼") + " – PRZ", text_color = pc, text_size = size.small, text_halign = text.align_right, text_valign = text.align_bottom)
+            przBox := box.new(cB, przHi, bar_index + 30, przLo, border_color = color.new(pc, 30), border_style = line.style_dashed, bgcolor = color.new(pc, 88), text = "Entstehendes " + przName + (bullP ? " ▲" : " ▼") + " – PRZ", text_color = pc, text_size = size.small, text_halign = text.align_right, text_valign = text.align_bottom, force_overlay = true)
 
 przHit = not na(przLo) and low <= przHi and high >= przLo
 przHitNew = przHit and not przHit[1]
@@ -307,9 +309,9 @@ if newPoint and showChartP and array.size(zzP) >= 3
     b3 = array.get(zzB, n - 1)
     lastHigh = array.get(zzH, n - 1)
     if not lastHigh and math.abs(p3 - p1) <= dTol * p1 and p2 - math.max(p1, p3) >= 2 * atrV
-        line.new(b1, p1, b3, p3, color = green, width = 2)
-        line.new(b1, p2, bar_index + 10, p2, color = color.new(#22c55e, 40), style = line.style_dashed)
-        label.new(b3, p3, "Doppelboden", style = label.style_label_up, color = color.new(#22c55e, 20), textcolor = color.white, size = size.small)
+        line.new(b1, p1, b3, p3, color = green, width = 2, force_overlay = true)
+        line.new(b1, p2, bar_index + 10, p2, color = color.new(#22c55e, 40), style = line.style_dashed, force_overlay = true)
+        label.new(b3, p3, "Doppelboden", style = label.style_label_up, color = color.new(#22c55e, 20), textcolor = color.white, size = size.small, force_overlay = true)
         dbNeck := p2
         dbBar := bar_index
         dbTarget := p2 + (p2 - math.min(p1, p3))
@@ -318,9 +320,9 @@ if newPoint and showChartP and array.size(zzP) >= 3
         patCol := green
         patBar := b3
     if lastHigh and math.abs(p3 - p1) <= dTol * p1 and math.min(p1, p3) - p2 >= 2 * atrV
-        line.new(b1, p1, b3, p3, color = red, width = 2)
-        line.new(b1, p2, bar_index + 10, p2, color = color.new(#f05252, 40), style = line.style_dashed)
-        label.new(b3, p3, "Doppeltop", style = label.style_label_down, color = color.new(#f05252, 20), textcolor = color.white, size = size.small)
+        line.new(b1, p1, b3, p3, color = red, width = 2, force_overlay = true)
+        line.new(b1, p2, bar_index + 10, p2, color = color.new(#f05252, 40), style = line.style_dashed, force_overlay = true)
+        label.new(b3, p3, "Doppeltop", style = label.style_label_down, color = color.new(#f05252, 20), textcolor = color.white, size = size.small, force_overlay = true)
         dtNeck := p2
         dtBar := bar_index
         patText := "Doppeltop (Nackenlinie " + str.tostring(p2, format.mintick) + ")"
@@ -341,12 +343,12 @@ if newPoint and showChartP and array.size(zzP) >= 3
         inv = not lastHigh and math.min(s1, s2) - hd >= 0.5 * atrV and math.max(s1, s2) < math.min(n1, n2)
         if (isTop or inv) and math.abs(s1 - s2) <= dTol * 1.5 * hd
             col = isTop ? red : green
-            line.new(sB1, s1, nB1, n1, color = col, width = 2)
-            line.new(nB1, n1, hB, hd, color = col, width = 2)
-            line.new(hB, hd, nB2, n2, color = col, width = 2)
-            line.new(nB2, n2, sB2, s2, color = col, width = 2)
-            line.new(nB1, n1, nB2, n2, color = color.new(col, 40), style = line.style_dashed, extend = extend.right)
-            label.new(hB, hd, isTop ? "Kopf (SKS)" : "Kopf (inverse SKS)", style = isTop ? label.style_label_down : label.style_label_up, color = color.new(col, 20), textcolor = color.white, size = size.small)
+            line.new(sB1, s1, nB1, n1, color = col, width = 2, force_overlay = true)
+            line.new(nB1, n1, hB, hd, color = col, width = 2, force_overlay = true)
+            line.new(hB, hd, nB2, n2, color = col, width = 2, force_overlay = true)
+            line.new(nB2, n2, sB2, s2, color = col, width = 2, force_overlay = true)
+            line.new(nB1, n1, nB2, n2, color = color.new(col, 40), style = line.style_dashed, extend = extend.right, force_overlay = true)
+            label.new(hB, hd, isTop ? "Kopf (SKS)" : "Kopf (inverse SKS)", style = isTop ? label.style_label_down : label.style_label_up, color = color.new(col, 20), textcolor = color.white, size = size.small, force_overlay = true)
             hsP1 := n1
             hsB1 := nB1
             hsP2 := n2
@@ -380,10 +382,10 @@ if hsBreak or ihsBreak or (not na(hsBar) and bar_index - hsBar > 60)
     hsDir := 0
     hsBar := na
 
-plotshape(dbBreak, "Ausbruch Doppelboden", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "DB ↑", textcolor = color.white, size = size.small)
-plotshape(dtBreak, "Bruch Doppeltop", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "DT ↓", textcolor = color.white, size = size.small)
-plotshape(ihsBreak, "Ausbruch inverse SKS", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "iSKS ↑", textcolor = color.white, size = size.small)
-plotshape(hsBreak, "Bruch SKS", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "SKS ↓", textcolor = color.white, size = size.small)
+plotshape(recent and dbBreak, "Ausbruch Doppelboden", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "DB ↑", textcolor = color.white, size = size.small, force_overlay = true)
+plotshape(recent and dtBreak, "Bruch Doppeltop", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "DT ↓", textcolor = color.white, size = size.small, force_overlay = true)
+plotshape(recent and ihsBreak, "Ausbruch inverse SKS", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "iSKS ↑", textcolor = color.white, size = size.small, force_overlay = true)
+plotshape(recent and hsBreak, "Bruch SKS", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "SKS ↓", textcolor = color.white, size = size.small, force_overlay = true)
 
 // ─── Kerzenmuster (nur an relevanten Stellen) ─────────────────────────────────
 body = math.abs(close - open)
@@ -396,10 +398,10 @@ bullEngulf = showCandle and bullCtx and close > open and close[1] < open[1] and 
 bearEngulf = showCandle and bearCtx and close < open and close[1] > open[1] and close <= open[1] and open >= close[1] and body > body[1]
 hammer     = showCandle and bullCtx and rng > 0 and loSh >= 0.6 * rng and upSh <= 0.15 * rng
 shootStar  = showCandle and bearCtx and rng > 0 and upSh >= 0.6 * rng and loSh <= 0.15 * rng
-plotshape(bullEngulf, "Bullish Engulfing", shape.triangleup, location.belowbar, color.new(#22c55e, 30), text = "BE", size = size.tiny)
-plotshape(bearEngulf, "Bearish Engulfing", shape.triangledown, location.abovebar, color.new(#f05252, 30), text = "BE", size = size.tiny)
-plotshape(hammer, "Hammer", shape.triangleup, location.belowbar, color.new(#22c55e, 30), text = "H", size = size.tiny)
-plotshape(shootStar, "Shooting Star", shape.triangledown, location.abovebar, color.new(#f05252, 30), text = "SS", size = size.tiny)
+plotshape(recent and bullEngulf, "Bullish Engulfing", shape.triangleup, location.belowbar, color.new(#22c55e, 30), text = "BE", size = size.tiny, force_overlay = true)
+plotshape(recent and bearEngulf, "Bearish Engulfing", shape.triangledown, location.abovebar, color.new(#f05252, 30), text = "BE", size = size.tiny, force_overlay = true)
+plotshape(recent and hammer, "Hammer", shape.triangleup, location.belowbar, color.new(#22c55e, 30), text = "H", size = size.tiny, force_overlay = true)
+plotshape(recent and shootStar, "Shooting Star", shape.triangledown, location.abovebar, color.new(#f05252, 30), text = "SS", size = size.tiny, force_overlay = true)
 
 // ─── Fibonacci-Retracements des letzten großen Swings ────────────────────────
 fLen = math.min(bar_index + 1, fibLen)
@@ -437,9 +439,9 @@ if barstate.islast
             // Extensions: über das Hoch (Aufwärtsswing) bzw. unter das Tief hinaus
             p = r > 1 ? (fibUp ? fLo + r * (fHi - fLo) : fHi - r * (fHi - fLo)) : fibLevel(r)
             fc = r == 0.618 or r == 0.5 ? color.new(#a78bfa, 0) : r > 1 ? color.new(#38bdf8, 20) : color.new(#a78bfa, 45)
-            array.push(fibLines, line.new(startB, p, bar_index + 20, p, color = fc, style = r == 0.0 or r == 1.0 ? line.style_solid : line.style_dotted))
-            array.push(fibLabels, label.new(bar_index + 20, p, (r > 1 ? "Ziel " : "Fib ") + str.tostring(r * 100, "#.#") + " %  " + str.tostring(p, format.mintick), style = label.style_label_left, color = color.new(color.black, 100), textcolor = fc, size = size.small))
-        gpBox := box.new(startB, gpTop, bar_index + 20, gpBot, border_color = color.new(#a78bfa, 60), bgcolor = color.new(#a78bfa, 85), text = "Golden Pocket", text_color = color.new(#a78bfa, 0), text_size = size.small, text_halign = text.align_left)
+            array.push(fibLines, line.new(startB, p, bar_index + 20, p, color = fc, style = r == 0.0 or r == 1.0 ? line.style_solid : line.style_dotted, force_overlay = true))
+            array.push(fibLabels, label.new(bar_index + 20, p, (r > 1 ? "Ziel " : "Fib ") + str.tostring(r * 100, "#.#") + " %  " + str.tostring(p, format.mintick), style = label.style_label_left, color = color.new(color.black, 100), textcolor = fc, size = size.small, force_overlay = true))
+        gpBox := box.new(startB, gpTop, bar_index + 20, gpBot, border_color = color.new(#a78bfa, 60), bgcolor = color.new(#a78bfa, 85), text = "Golden Pocket", text_color = color.new(#a78bfa, 0), text_size = size.small, text_halign = text.align_left, force_overlay = true)
 
 // Nächstes Fibonacci-Level zum aktuellen Kurs (für die Tabelle)
 nearestFib() =>
@@ -546,9 +548,9 @@ if newPoint and showTri and array.size(zzP) >= 4
                 line.delete(triL)
                 label.delete(triLbl)
             tc = bias > 0 ? green : bias < 0 ? red : color.new(#eab308, 0)
-            triU := line.new(start, upStart, bar_index, upNow, color = tc, width = 2)
-            triL := line.new(start, loStart, bar_index, loNow, color = tc, width = 2)
-            triLbl := label.new(start, upStart, nm, style = label.style_label_down, color = color.new(tc, 20), textcolor = color.white, size = size.small)
+            triU := line.new(start, upStart, bar_index, upNow, color = tc, width = 2, force_overlay = true)
+            triL := line.new(start, loStart, bar_index, loNow, color = tc, width = 2, force_overlay = true)
+            triLbl := label.new(start, upStart, nm, style = label.style_label_down, color = color.new(tc, 20), textcolor = color.white, size = size.small, force_overlay = true)
             triActive := true
             triName := nm
             triBias := bias
@@ -570,16 +572,16 @@ if triBreakUp or triBreakDn
     triTarget := triBreakUp ? upT + triHeight : loT - triHeight
     triTBar := bar_index
     tcol = triBreakUp ? green : red
-    line.new(bar_index, close, bar_index + 25, triTarget, color = color.new(tcol, 30), style = line.style_arrow_right)
-    label.new(bar_index + 25, triTarget, "Ziel " + triName + ": " + str.tostring(triTarget, format.mintick), style = label.style_label_left, color = color.new(tcol, 20), textcolor = color.white, size = size.small)
+    line.new(bar_index, close, bar_index + 25, triTarget, color = color.new(tcol, 30), style = line.style_arrow_right, force_overlay = true)
+    label.new(bar_index + 25, triTarget, "Ziel " + triName + ": " + str.tostring(triTarget, format.mintick), style = label.style_label_left, color = color.new(tcol, 20), textcolor = color.white, size = size.small, force_overlay = true)
     patText := triName + (triBreakUp ? " – Ausbruch ↑" : " – Bruch ↓")
     patCol := tcol
     patBar := bar_index
     triActive := false
 if triActive and (bar_index - tB0 > 300 or upT <= loT)
     triActive := false
-plotshape(triBreakUp, "Ausbruch Formation", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "↑", textcolor = color.white, size = size.tiny)
-plotshape(triBreakDn, "Bruch Formation", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "↓", textcolor = color.white, size = size.tiny)
+plotshape(recent and triBreakUp, "Ausbruch Formation", shape.labelup, location.belowbar, color.new(#22c55e, 10), text = "↑", textcolor = color.white, size = size.tiny, force_overlay = true)
+plotshape(recent and triBreakDn, "Bruch Formation", shape.labeldown, location.abovebar, color.new(#f05252, 10), text = "↓", textcolor = color.white, size = size.tiny, force_overlay = true)
 
 // ─── Unterstützungs-/Widerstandszonen ─────────────────────────────────────────
 grpS = "Unterstützung / Widerstand / Ziele"
@@ -588,7 +590,7 @@ srLen    = input.int(8, "Pivot-Länge", minval = 3, maxval = 30, group = grpS)
 srLook   = input.int(400, "Zeitraum (Kerzen zurück)", minval = 50, maxval = 2000, group = grpS)
 srWidth  = input.float(0.6, "Zonenbreite (× ATR)", minval = 0.2, maxval = 3, step = 0.1, group = grpS)
 srMin    = input.int(2, "Mindestanzahl Berührungen", minval = 1, maxval = 6, group = grpS)
-srShowN  = input.int(3, "Zonen je Seite", minval = 1, maxval = 6, group = grpS)
+srShowN  = input.int(2, "Zonen je Seite", minval = 1, maxval = 6, group = grpS)
 showTgt  = input.bool(true, "Zielzonen automatisch einzeichnen", group = grpS)
 
 srH = ta.pivothigh(high, srLen, srLen)
@@ -691,7 +693,7 @@ if barstate.islast
             hi = array.get(zHi, i)
             if (lo + hi) / 2 <= close and shown < srShowN
                 tr = shown == 0 ? 70 : 85
-                array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, tr), text = (shown == 0 ? "Nächste Unterstützung · " : "Unterstützung · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = green, text_size = size.small, text_halign = text.align_right))
+                array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, tr), text = (shown == 0 ? "Nächste Unterstützung · " : "Unterstützung · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = green, text_size = size.small, text_halign = text.align_right, force_overlay = true))
                 shown += 1
         shown := 0
         for k = array.size(ord) - 1 to 0
@@ -700,7 +702,7 @@ if barstate.islast
             hi = array.get(zHi, i)
             if (lo + hi) / 2 > close and shown < srShowN
                 tr = shown == 0 ? 70 : 85
-                array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#f05252, 50), bgcolor = color.new(#f05252, tr), text = (shown == 0 ? "Nächster Widerstand · " : "Widerstand · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = red, text_size = size.small, text_halign = text.align_right))
+                array.push(srBoxes, box.new(array.get(zFirst, i), hi, bar_index + 30, lo, border_color = color.new(#f05252, 50), bgcolor = color.new(#f05252, tr), text = (shown == 0 ? "Nächster Widerstand · " : "Widerstand · ") + str.tostring(array.get(zCnt, i)) + "×", text_color = red, text_size = size.small, text_halign = text.align_right, force_overlay = true))
                 shown += 1
 
 // ─── Zielzonen: Widerstände + Fib-Extensions + Musterziele, Überlappungen = Konfluenz
@@ -782,15 +784,15 @@ if barstate.islast
                 hi = array.get(mHi, k)
                 strong = array.get(mN, k) >= 2
                 tcol = color.new(#38bdf8, 0)
-                array.push(tgtBoxes, box.new(bar_index + 3, hi, bar_index + 45, lo, border_color = color.new(#38bdf8, strong ? 0 : 40), border_width = strong ? 2 : 1, bgcolor = color.new(#38bdf8, strong ? 70 : 85), text = "Ziel " + str.tostring(k + 1) + (strong ? " ★ " : " ") + str.tostring((lo + hi) / 2, format.mintick) + " (" + str.tostring(((lo + hi) / 2 / close - 1) * 100, "#.#") + " %) · " + array.get(mTx, k), text_color = tcol, text_size = size.small, text_halign = text.align_left))
+                array.push(tgtBoxes, box.new(bar_index + 3, hi, bar_index + 45, lo, border_color = color.new(#38bdf8, strong ? 0 : 40), border_width = strong ? 2 : 1, bgcolor = color.new(#38bdf8, strong ? 70 : 85), text = "Ziel " + str.tostring(k + 1) + (strong ? " ★ " : " ") + str.tostring((lo + hi) / 2, format.mintick) + " (" + str.tostring(((lo + hi) / 2 / close - 1) * 100, "#.#") + " %) · " + array.get(mTx, k), text_color = tcol, text_size = size.small, text_halign = text.align_left, force_overlay = true))
                 tgtText := tgtText + (k > 0 ? " · " : "") + "Z" + str.tostring(k + 1) + " " + str.tostring((lo + hi) / 2, format.mintick) + (strong ? "★" : "")
 
 zoneTxt(lo, hi, c) => na(lo) ? "–" : str.tostring(lo, format.mintick) + "–" + str.tostring(hi, format.mintick) + " (" + str.tostring(c) + "×, " + (((lo + hi) / 2 / close - 1) * 100 > 0 ? "+" : "") + str.tostring(((lo + hi) / 2 / close - 1) * 100, "#.#") + " %)"
 
 // ─── Zeichnen ─────────────────────────────────────────────────────────────────
-plot(showSma ? s50 : na, "SMA 50", color = #fbbf24, linewidth = 2)
-plot(showSma ? s200 : na, "SMA 200", color = #60a5fa, linewidth = 2)
-plotshape(showBuy and action == 1 and action[1] != 1, "Aufstock-Signal", shape.triangleup, location.belowbar, color.new(#22c55e, 0), size = size.small, text = "Kauf")
+plot(showSma ? s50 : na, "SMA 50", color = #fbbf24, linewidth = 2, force_overlay = true)
+plot(showSma ? s200 : na, "SMA 200", color = #60a5fa, linewidth = 2, force_overlay = true)
+plotshape(recent and showBuy and action == 1 and action[1] != 1, "Aufstock-Signal", shape.triangleup, location.belowbar, color.new(#22c55e, 0), size = size.small, text = "Kauf", force_overlay = true)
 
 var box bx50  = na
 var box bxSup = na
@@ -803,13 +805,13 @@ if barstate.islast
         left = bar_index - 40
         right = bar_index + 15
         if z50ok
-            bx50 := box.new(left, s50 * 1.01, right, s50 * 0.98, border_color = color.new(#fbbf24, 50), bgcolor = color.new(#fbbf24, 85), text = "Kaufzone: Rücksetzer an SMA 50", text_color = color.new(#fbbf24, 0), text_size = size.small, text_halign = text.align_right)
+            bx50 := box.new(left, s50 * 1.01, right, s50 * 0.98, border_color = color.new(#fbbf24, 50), bgcolor = color.new(#fbbf24, 85), text = "Kaufzone: Rücksetzer an SMA 50", text_color = color.new(#fbbf24, 0), text_size = size.small, text_halign = text.align_right, force_overlay = true)
         if zSupOk
-            bxSup := box.new(left, support * 1.01, right, support * 0.99, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, 85), text = "Kaufzone: letztes Swing-Tief", text_color = color.new(#22c55e, 0), text_size = size.small, text_halign = text.align_right)
+            bxSup := box.new(left, support * 1.01, right, support * 0.99, border_color = color.new(#22c55e, 50), bgcolor = color.new(#22c55e, 85), text = "Kaufzone: letztes Swing-Tief", text_color = color.new(#22c55e, 0), text_size = size.small, text_halign = text.align_right, force_overlay = true)
         if z200ok
-            bx200 := box.new(left, s200 * 1.02, right, s200 * 0.97, border_color = color.new(#60a5fa, 50), bgcolor = color.new(#60a5fa, 85), text = "Kaufzone: Test der 200-Tage-Linie", text_color = color.new(#60a5fa, 0), text_size = size.small, text_halign = text.align_right)
+            bx200 := box.new(left, s200 * 1.02, right, s200 * 0.97, border_color = color.new(#60a5fa, 50), bgcolor = color.new(#60a5fa, 85), text = "Kaufzone: Test der 200-Tage-Linie", text_color = color.new(#60a5fa, 0), text_size = size.small, text_halign = text.align_right, force_overlay = true)
 
-var table tbl = table.new(position.top_right, 2, 17, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1)
+var table tbl = table.new(position.top_right, 2, 17, bgcolor = color.new(#161a21, 5), border_color = color.new(#262c36, 0), border_width = 1, frame_color = color.new(#262c36, 0), frame_width = 1, force_overlay = true)
 fmt(v, f) => na(v) ? "–" : str.tostring(v, f)
 sgn(v, f) => na(v) ? "–" : (v > 0 ? "+" : "") + str.tostring(v, f)
 row(r, k, v, c) =>
@@ -856,3 +858,16 @@ alertcondition(supBreak, "Unterstützung gebrochen", "{{ticker}}: Unterstützung
 alertcondition(resBreak, "Widerstand überwunden", "{{ticker}}: Ausbruch über die Widerstandszone – Kurs {{close}}")
 alertcondition(triBreakUp, "Formation: Ausbruch nach oben", "{{ticker}}: Ausbruch aus Dreieck/Keil/Kanal nach oben – Kurs {{close}}")
 alertcondition(triBreakDn, "Formation: Bruch nach unten", "{{ticker}}: Bruch aus Dreieck/Keil/Kanal nach unten – Kurs {{close}}")
+
+// ─── Aufräumen: alte Zeichnungen außerhalb des Anzeigezeitraums entfernen ────
+if barstate.islast
+    cutoff = last_bar_index - histBars
+    for l in array.copy(line.all)
+        if math.max(line.get_x1(l), line.get_x2(l)) < cutoff
+            line.delete(l)
+    for lb in array.copy(label.all)
+        if label.get_x(lb) < cutoff
+            label.delete(lb)
+    for bx in array.copy(box.all)
+        if box.get_right(bx) < cutoff
+            box.delete(bx)
